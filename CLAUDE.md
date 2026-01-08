@@ -1,6 +1,6 @@
 # RagicEDP 專案配置
 
-> v1.0 | 2025-12-30 | 精簡版（繼承上層配置）
+> v1.1 | 2025-01-08 | 精簡版（繼承上層配置）
 
 ---
 
@@ -9,6 +9,39 @@
 Ragic ERP 資料平台 - 整合資料備份、清理、分析與視覺化功能。
 
 **技術**: Python 3.11+ | UV | BigQuery | Ragic REST API | 正體中文
+
+**開發準則**: `documents/開發準則_v1.md`
+
+---
+
+## 系統模組狀態
+
+### 已完成 ✅
+
+| 模組 | 路徑 | 說明 |
+|------|------|------|
+| 增量備份核心 | `src/incremental.py` | v3 簡化版 |
+| Cloud Function 入口 | `src/main.py` | HTTP 入口點 |
+| 全量備份 | `src/full_backup.py` | 手動執行 |
+| 手動補抓 | `src/manual_backup.py` | 指定日期 |
+| Email 通知 | `src/utils/email.py` | 失敗通知 |
+| 報告系統 | `src/report_generator.py` | 週報告 |
+| BACKUP-FILTER | 內建於 incremental.py | 規則 A/B/C |
+
+### 已棄用 ⚠️
+
+| 模組 | 說明 |
+|------|------|
+| `src/ragic_client.py` | 由 incremental.py 取代 |
+| `src/backup_runner.py` | 由 incremental.py 取代 |
+| `src/data_filter.py` | 整合至 incremental.py |
+
+### 待開發 ⏳
+
+| 模組 | 說明 |
+|------|------|
+| 清洗規則引擎 | YAML 配置化規則 |
+| 資料修正介面 | Cloud Run 全端應用 |
 
 ---
 
