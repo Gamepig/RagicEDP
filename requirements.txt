@@ -1,0 +1,22 @@
+# Ragic ERP Backup System v3 - Dependencies
+
+# Cloud Function framework
+functions-framework==3.*
+
+# Google Cloud
+google-cloud-bigquery==3.*
+
+# HTTP requests
+requests>=2.28.0
+
+# Flask (for Cloud Function)
+flask>=2.0.0
+
+# Timezone
+pytz>=2024.1
+
+# Logging
+loguru>=0.7.0
+
+# Environment
+python-dotenv>=1.0.0

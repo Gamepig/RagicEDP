@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+.venv
+.env
+
+# IDE
+.vscode
+.idea
+
+# Data
+data/
+*.json
+
+# Documents
+documents/
+*.md
+
+# Tests
+tests/
+test_workspace/
+
+# Others
+*.log
+.DS_Store
+
+# Scripts (not needed for Cloud Function)
+scripts/
+analysis/
+
+# Reference materials
+參考資料/

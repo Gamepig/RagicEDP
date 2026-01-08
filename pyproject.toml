@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragic-edp"
+version = "0.1.0"
+description = "Ragic ERP Data Platform - Automated data sync, cleaning, and analysis"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "RagicEDP Team"}
+]
+
+dependencies = [
+    "requests>=2.31.0",
+    "loguru>=0.7.0",
+    "google-cloud-bigquery>=3.0.0",
+    "functions-framework>=3.0.0",
+    "flask>=2.0.0",
+    "python-dotenv>=1.2.1",
+    "pytz>=2025.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.7.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/ragic-edp"
+Documentation = "https://github.com/yourusername/ragic-edp/wiki"
+Repository = "https://github.com/yourusername/ragic-edp.git"
+Issues = "https://github.com/yourusername/ragic-edp/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "W"]
+ignore = ["E501"]  # Handled by Black
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "test_workspace"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

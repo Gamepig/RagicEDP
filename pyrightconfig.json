@@ -1,0 +1,22 @@
+{
+    "include": ["src", "scripts"],
+    "exclude": [
+        ".venv",
+        "venv",
+        "__pycache__",
+        "data",
+        "轉檔",
+        "TEMP",
+        "test_workspace",
+        ".serena",
+        ".claude",
+        "documents",
+        "參考資料",
+        "reports",
+        "rules"
+    ],
+    "venvPath": ".",
+    "venv": ".venv",
+    "pythonVersion": "3.11",
+    "typeCheckingMode": "basic"
+}

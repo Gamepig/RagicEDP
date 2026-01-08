@@ -1,0 +1,44 @@
+# 測試工作區（不上傳 GitHub）
+test_workspace/
+
+# 資料檔案
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 環境變數
+.env
+.env.*
+*.yaml
+!pyproject.yaml
+
+# 日誌
+*.log
+logs/
+memory-bank/
+.ums/
+
+# 暫存/快取
+.code-summary/
+.serena/
+.claude/
+TEMP/
+reports/
+轉檔/
+
+# MCP 設定（本地）
+.mcp.json
