@@ -1,147 +1,192 @@
 # 數值範圍規則 (NUM-*)
-# Version: 1.0.0
-# Date: 2026-01-08
+# Version: 1.1.0
+# Date: 2026-01-11
 
 rules:
   # === 價格相關 ===
   - id: NUM-001
-    type: range
-    field: 單價
+    name: 單價非負驗證
+    type: validation
+    category: numeric
+    field: unit_price
     min: 0
     description: "單價不可為負數"
-    tables: [70, 99]
+    tables: ["70", "99"]
     severity: high
+    enabled: true
     auto_fixable: false
 
   - id: NUM-002
-    type: range
-    field: 小計
+    name: 小計非負驗證
+    type: validation
+    category: numeric
+    field: subtotal
     min: 0
     description: "小計不可為負數"
-    tables: [99]
+    tables: ["99"]
     severity: high
+    enabled: true
     auto_fixable: false
 
   - id: NUM-003
-    type: range
-    field: 訂單實收
+    name: 訂單實收非負驗證
+    type: validation
+    category: numeric
+    field: actual_amount
     min: 0
     description: "訂單實收金額不可為負數"
-    tables: [50]
+    tables: ["50"]
     severity: high
+    enabled: true
     auto_fixable: false
 
   - id: NUM-004
-    type: range
-    field: 折扣
+    name: 折扣非負驗證
+    type: validation
+    category: numeric
+    field: discount
     min: 0
     description: "折扣金額不可為負數"
-    tables: [99]
+    tables: ["99"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # === 數量相關 ===
   - id: NUM-005
-    type: range
-    field: 數量
+    name: 數量最小值驗證
+    type: validation
+    category: numeric
+    field: quantity
     min: 1
     description: "訂單明細數量須大於 0"
-    tables: [99]
+    tables: ["99"]
     severity: high
+    enabled: true
     auto_fixable: false
 
   - id: NUM-006
-    type: range
-    field: 數量
+    name: 數量最大值驗證
+    type: validation
+    category: numeric
+    field: quantity
     max: 99999
     description: "訂單明細數量須小於 100000"
-    tables: [99]
+    tables: ["99"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # === 價格上限 ===
   - id: NUM-007
-    type: range
-    field: 單價
+    name: 單價上限驗證
+    type: validation
+    category: numeric
+    field: unit_price
     max: 999999
     description: "單價須小於 100 萬"
-    tables: [70, 99]
+    tables: ["70", "99"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   - id: NUM-008
-    type: range
-    field: 小計
+    name: 小計上限驗證
+    type: validation
+    category: numeric
+    field: subtotal
     max: 9999999
     description: "小計須小於 1000 萬"
-    tables: [99]
+    tables: ["99"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   - id: NUM-009
-    type: range
-    field: 訂單實收
+    name: 訂單實收上限驗證
+    type: validation
+    category: numeric
+    field: actual_amount
     max: 99999999
     description: "訂單實收須小於 1 億"
-    tables: [50]
+    tables: ["50"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # === 折扣限制 ===
   - id: NUM-010
-    type: range
-    field: 折扣
+    name: 折扣上限驗證
+    type: validation
+    category: numeric
+    field: discount
     max: 999999
     description: "折扣金額須小於 100 萬"
-    tables: [99]
+    tables: ["99"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # === 百分比 ===
   - id: NUM-011
-    type: range
-    field: 折扣率
+    name: 折扣率範圍驗證
+    type: validation
+    category: numeric
+    field: discount_rate
     min: 0
     max: 100
     description: "折扣率須在 0-100 之間"
-    tables: [80]
+    tables: ["80"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # === 庫存相關 ===
   - id: NUM-012
-    type: range
-    field: 庫存數量
+    name: 庫存數量非負驗證
+    type: validation
+    category: numeric
+    field: stock_quantity
     min: 0
     description: "庫存數量不可為負數"
-    tables: [70]
+    tables: ["70"]
     severity: high
+    enabled: true
     auto_fixable: false
 
   - id: NUM-013
-    type: range
-    field: 安全庫存
+    name: 安全庫存非負驗證
+    type: validation
+    category: numeric
+    field: safety_stock
     min: 0
     description: "安全庫存不可為負數"
-    tables: [70]
+    tables: ["70"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # === 其他 ===
   - id: NUM-014
-    type: range
-    field: 排序
+    name: 排序值非負驗證
+    type: validation
+    category: numeric
+    field: sort_order
     min: 0
     description: "排序值不可為負數"
-    tables: [10, 20, 30, 40, 70]
+    tables: ["10", "20", "30", "40", "70"]
     severity: low
+    enabled: true
     auto_fixable: false
 
   - id: NUM-015
-    type: range
-    field: 重量
+    name: 重量非負驗證
+    type: validation
+    category: numeric
+    field: weight
     min: 0
     description: "重量不可為負數"
-    tables: [70]
+    tables: ["70"]
     severity: medium
+    enabled: true
     auto_fixable: false

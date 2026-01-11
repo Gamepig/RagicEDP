@@ -1,40 +1,53 @@
 # 唯一性規則 (UNQ-*)
-# Version: 1.0.0
-# Date: 2026-01-08
+# Version: 1.1.0
+# Date: 2026-01-11
+# 注意：使用實際 BigQuery 欄位名稱 (英文)
 
 rules:
   # UNQ-001: 品牌編號唯一
   - id: UNQ-001
-    type: unique
-    field: 品牌編號
+    name: 品牌編號唯一性驗證
+    type: validation
+    category: unique
+    field: brand_code
     description: "品牌編號在品牌表中須唯一"
-    tables: [10]
+    tables: ["10"]
     severity: critical
+    enabled: true
     auto_fixable: false
 
   # UNQ-002: 訂單編號唯一
   - id: UNQ-002
-    type: unique
-    field: 訂單編號
+    name: 訂單編號唯一性驗證
+    type: validation
+    category: unique
+    field: order_code
     description: "訂單編號在訂單表中須唯一"
-    tables: [50]
+    tables: ["50"]
     severity: critical
+    enabled: true
     auto_fixable: false
 
   # UNQ-003: 商品編號唯一
   - id: UNQ-003
-    type: unique
-    field: 商品編號
+    name: 商品編號唯一性驗證
+    type: validation
+    category: unique
+    field: product_code
     description: "商品編號在商品表中須唯一"
-    tables: [70]
+    tables: ["70"]
     severity: critical
+    enabled: true
     auto_fixable: false
 
   # UNQ-004: 客戶編號唯一
   - id: UNQ-004
-    type: unique
-    field: 客戶編號
+    name: 客戶編號唯一性驗證
+    type: validation
+    category: unique
+    field: customer_code
     description: "客戶編號在客戶表中須唯一"
-    tables: [60]
+    tables: ["60"]
     severity: critical
+    enabled: true
     auto_fixable: false

@@ -1,103 +1,113 @@
 # 格式驗證規則 (FMT-*)
-# Version: 1.0.1
-# Date: 2026-01-08
+# Version: 1.1.0
+# Date: 2026-01-11
 # 注意：使用實際 BigQuery 欄位名稱 (英文)
 
 rules:
   # FMT-001: 手機號碼格式
   - id: FMT-001
-    type: format
+    name: 手機號碼格式驗證
+    type: validation
+    category: format
     field: mobile
     pattern: "^09\\d{8}$"
     description: "手機號碼須為 09 開頭的 10 碼數字"
-    tables: [20, 60]
+    tables: ["20", "60"]
     severity: medium
+    enabled: true
     auto_fixable: true
     fix_rule: FMT-001-FIX
 
   # FMT-002: 市話格式
-  # 注意：客戶表(60) phone 欄位實際存放手機號碼，市話應存於 landline
   - id: FMT-002
-    type: format
+    name: 市話格式驗證
+    type: validation
+    category: format
     field: landline
     pattern: "^0[2-8]\\d{7,8}$"
     description: "市話須為 0 開頭的區碼 + 7-8 碼數字"
-    tables: [20, 60]
+    tables: ["20", "60"]
     severity: medium
+    enabled: true
     auto_fixable: true
     fix_rule: FMT-002-FIX
 
   # FMT-003: Email 格式
   - id: FMT-003
-    type: format
+    name: Email 格式驗證
+    type: validation
+    category: format
     field: email
     pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
     description: "Email 格式須符合標準格式"
-    tables: [20, 60]
+    tables: ["20", "60"]
     severity: medium
+    enabled: true
     auto_fixable: true
     fix_rule: FMT-003-FIX
 
   # FMT-004: 統一編號格式
   - id: FMT-004
-    type: format
+    name: 統一編號格式驗證
+    type: validation
+    category: format
     field: tax_id
     pattern: "^\\d{8}$"
     description: "統一編號須為 8 碼數字"
-    tables: [60]
+    tables: ["60"]
     severity: high
+    enabled: true
     auto_fixable: true
     fix_rule: FMT-004-FIX
 
   # FMT-005: 郵遞區號格式
   - id: FMT-005
-    type: format
+    name: 郵遞區號格式驗證
+    type: validation
+    category: format
     field: zipcode
     pattern: "^\\d{3}(\\d{2,3})?$"
     description: "郵遞區號須為 3 碼或 5-6 碼數字"
-    tables: [41, 60]
+    tables: ["41", "60"]
     severity: low
+    enabled: true
     auto_fixable: false
 
   # FMT-006: 訂單編號格式
   - id: FMT-006
-    type: format
+    name: 訂單編號格式驗證
+    type: validation
+    category: format
     field: order_code
     pattern: "^[A-Z0-9_-]+$"
     description: "訂單編號須為大寫英數字、底線及連字號"
-    tables: [50, 99]
+    tables: ["50", "99"]
     severity: high
+    enabled: true
     auto_fixable: false
-
-  # FMT-007: 日期格式 (已停用)
-  # 說明：order_date 是 BigQuery DATE 類型，備份時已自動轉換格式，無需驗證
-  # 停用日期：2026-01-11
-  # - id: FMT-007
-  #   type: format
-  #   field: order_date
-  #   pattern: "^\\d{4}/\\d{2}/\\d{2}$"
-  #   description: "日期格式須為 YYYY/MM/DD"
-  #   tables: [50]
-  #   severity: medium
-  #   auto_fixable: true
-  #   fix_rule: FMT-007-FIX
 
   # FMT-008: 品牌編號格式
   - id: FMT-008
-    type: format
+    name: 品牌編號格式驗證
+    type: validation
+    category: format
     field: brand_code
     pattern: "^[A-Z0-9]+$"
     description: "品牌編號須為大寫英數字"
-    tables: [10, 20, 70, 99]
+    tables: ["10", "20", "70", "99"]
     severity: medium
+    enabled: true
     auto_fixable: false
 
   # FMT-009: 商品編號格式
   - id: FMT-009
-    type: format
+    name: 商品編號格式驗證
+    type: validation
+    category: format
     field: product_code
     pattern: "^[A-Z0-9_-]+$"
     description: "商品編號須為大寫英數字、底線及連字號"
-    tables: [70, 99]
+    tables: ["70", "99"]
     severity: high
+    enabled: true
     auto_fixable: false

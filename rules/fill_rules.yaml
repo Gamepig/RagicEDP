@@ -1,6 +1,7 @@
 # 自動補足規則配置
-# 版本: v1.0
+# 版本: v1.1
 # 建立日期: 2026-01-11
+# 更新日期: 2026-01-11 (tables 改為字串陣列)
 # 說明: 從現有資料自動補足缺失欄位
 
 metadata:
@@ -22,7 +23,7 @@ rules:
     name: 首購品牌補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 首購品牌
     target_field_id: null  # 待確認欄位 ID
     source: order_detail_calculation
@@ -48,7 +49,7 @@ rules:
     name: 來源通路補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 來源通路
     target_field_id: null
     source: order_detail_calculation
@@ -74,7 +75,7 @@ rules:
     name: 累積消費金額補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 累積消費金額
     target_field_id: null
     source: order_detail_calculation
@@ -98,7 +99,7 @@ rules:
     name: 訂單次數補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 訂單次數
     target_field_id: null
     source: order_detail_calculation
@@ -122,7 +123,7 @@ rules:
     name: 首購日期補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 首購日期
     target_field_id: null
     source: order_detail_calculation
@@ -146,7 +147,7 @@ rules:
     name: 最後購買日期補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 最後購買日期
     target_field_id: null
     source: order_detail_calculation
@@ -170,7 +171,7 @@ rules:
     name: 購買品牌清單補足
     type: auto_fill
     category: customer_stats
-    tables: [60]
+    tables: ["60"]
     target_field: 購買品牌清單
     target_field_id: null
     source: order_detail_calculation
@@ -200,7 +201,7 @@ rules:
     name: 通路名稱補足
     type: lookup_fill
     category: order_lookup
-    tables: [99]
+    tables: ["99"]
     target_field: 通路名稱
     target_field_id: null
     source_table: 20
@@ -221,7 +222,7 @@ rules:
     name: 客戶名稱補足
     type: lookup_fill
     category: order_lookup
-    tables: [99]
+    tables: ["99"]
     target_field: 客戶名稱
     target_field_id: null
     source_table: 60
@@ -242,7 +243,7 @@ rules:
     name: 商品建議售價補足
     type: lookup_fill
     category: order_lookup
-    tables: [99]
+    tables: ["99"]
     target_field: 商品建議售價
     target_field_id: null
     source_table: 70
@@ -264,7 +265,7 @@ rules:
     name: 商品常態售價補足
     type: lookup_fill
     category: order_lookup
-    tables: [99]
+    tables: ["99"]
     target_field: 商品常態售價
     target_field_id: null
     source_table: 70
@@ -284,7 +285,7 @@ rules:
     name: 收件人姓名補足
     type: cascade_fill
     category: order_lookup
-    tables: [99]
+    tables: ["99"]
     target_field: 收件人姓名
     target_field_id: null
     trigger:
@@ -312,7 +313,7 @@ rules:
     name: 郵遞區號補足
     type: cascade_fill
     category: order_lookup
-    tables: [99]
+    tables: ["99"]
     target_field: 郵遞區號
     target_field_id: null
     trigger:
@@ -344,7 +345,7 @@ rules:
     name: 首購標記
     type: derived_field
     category: derived
-    tables: [99]
+    tables: ["99"]
     target_field: _is_first_purchase
     data_type: boolean
     formula:
@@ -366,7 +367,7 @@ rules:
     name: 贈品標記
     type: derived_field
     category: derived
-    tables: [99]
+    tables: ["99"]
     target_field: _is_gift
     data_type: boolean
     formula:
@@ -387,7 +388,7 @@ rules:
     name: 免運標記
     type: derived_field
     category: derived
-    tables: [99]
+    tables: ["99"]
     target_field: _is_free_shipping
     data_type: boolean
     formula:
@@ -406,7 +407,7 @@ rules:
     name: 離島偏遠地區標記
     type: derived_field
     category: derived
-    tables: [99]
+    tables: ["99"]
     target_field: _is_remote_area
     data_type: boolean
     formula:
@@ -432,7 +433,7 @@ rules:
     name: 配送方式分類
     type: derived_field
     category: derived
-    tables: [99]
+    tables: ["99"]
     target_field: _delivery_type
     data_type: string
     formula:
@@ -461,7 +462,7 @@ rules:
     name: 客戶沉睡狀態
     type: derived_field
     category: derived
-    tables: [60]
+    tables: ["60"]
     target_field: _customer_status
     data_type: string
     depends_on: [FILL-CUST-006]
@@ -496,7 +497,7 @@ rules:
     name: 客戶RFM分數
     type: derived_field
     category: derived
-    tables: [60]
+    tables: ["60"]
     target_field: _rfm_score
     data_type: string
     depends_on: [FILL-CUST-003, FILL-CUST-004, FILL-CUST-006]
