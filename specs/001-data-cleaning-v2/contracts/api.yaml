@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: 資料清洗系統 API
+  description: 資料修正介面 REST API
+  version: 1.0.0
+
+servers:
+  - url: https://data-correction-app-xxx.asia-east1.run.app/api
+    description: Production (Cloud Run)
+  - url: http://localhost:8000/api
+    description: Local development
+
+security:
+  - googleOAuth: []
+
+paths:
+  # ==================== 資料查詢 ====================
+  /pending:
+    get:
+      summary: 取得待處理資料清單
+      operationId: getPendingRecords
+      tags: [Data]
+      parameters:
+        - name: table_code
+          in: query
+          schema:
+            type: string
+          description: 資料表代碼篩選
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+          description: 嚴重程度篩選
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPendingRecords'
+
+  /records/{table_code}/{record_id}:
+    get:
+      summary: 取得單筆記錄詳情
+      operationId: getRecordDetail
+      tags: [Data]
+      parameters:
+        - name: table_code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordDetail'
+        '404':
+          description: 記錄不存在
+
+  /records/{table_code}/{record_id}/violations:
+    get:
+      summary: 取得記錄的違規清單
+      operationId: getRecordViolations
+      tags: [Data]
+      parameters:
+        - name: table_code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Violation'
+
+  /records/{table_code}/{record_id}/history:
+    get:
+      summary: 取得記錄的修正歷史
+      operationId: getRecordHistory
+      tags: [Data]
+      parameters:
+        - name: table_code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CleaningHistory'
+
+  # ==================== 資料修正 ====================
+  /corrections:
+    post:
+      summary: 提交資料修正
+      operationId: submitCorrection
+      tags: [Correction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CorrectionRequest'
+      responses:
+        '200':
+          description: 修正成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrectionResponse'
+        '400':
+          description: 請求無效
+        '409':
+          description: 資料衝突（已被其他人修改）
+
+  /corrections/batch:
+    post:
+      summary: 批次修正
+      operationId: submitBatchCorrection
+      tags: [Correction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchCorrectionRequest'
+      responses:
+        '200':
+          description: 批次修正成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchCorrectionResponse'
+
+  /corrections/{table_code}/{record_id}/ignore:
+    post:
+      summary: 忽略違規
+      operationId: ignoreViolation
+      tags: [Correction]
+      parameters:
+        - name: table_code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                violation_ids:
+                  type: array
+                  items:
+                    type: string
+                reason:
+                  type: string
+              required:
+                - violation_ids
+                - reason
+      responses:
+        '200':
+          description: 忽略成功
+
+  # ==================== AI 建議 ====================
+  /ai/suggest:
+    post:
+      summary: 取得 AI 修正建議
+      operationId: getAISuggestion
+      tags: [AI]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_code:
+                  type: string
+                record_id:
+                  type: string
+                violation_ids:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - table_code
+                - record_id
+      responses:
+        '200':
+          description: AI 建議
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AISuggestionResponse'
+        '503':
+          description: AI 服務不可用
+
+  /ai/apply:
+    post:
+      summary: 套用 AI 建議
+      operationId: applyAISuggestion
+      tags: [AI]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_code:
+                  type: string
+                record_id:
+                  type: string
+                suggestion_id:
+                  type: string
+              required:
+                - table_code
+                - record_id
+                - suggestion_id
+      responses:
+        '200':
+          description: 套用成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrectionResponse'
+
+  # ==================== 統計 ====================
+  /stats/dashboard:
+    get:
+      summary: 取得儀表板統計
+      operationId: getDashboardStats
+      tags: [Stats]
+      responses:
+        '200':
+          description: 統計資料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  /stats/batches:
+    get:
+      summary: 取得清洗批次清單
+      operationId: getBatchList
+      tags: [Stats]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: 批次清單
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CleaningBatch'
+
+components:
+  securitySchemes:
+    googleOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://accounts.google.com/o/oauth2/auth
+          tokenUrl: https://oauth2.googleapis.com/token
+          scopes:
+            email: Access user email
+
+  schemas:
+    PaginatedPendingRecords:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingRecord'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        has_next:
+          type: boolean
+
+    PendingRecord:
+      type: object
+      properties:
+        table_code:
+          type: string
+        table_name:
+          type: string
+        record_id:
+          type: string
+        violation_count:
+          type: integer
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        detected_at:
+          type: string
+          format: date-time
+        ai_suggestion_available:
+          type: boolean
+
+    RecordDetail:
+      type: object
+      properties:
+        table_code:
+          type: string
+        record_id:
+          type: string
+        data:
+          type: object
+          description: 原始記錄資料
+        cleaning_status:
+          type: string
+        violations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Violation'
+        ai_suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AISuggestion'
+
+    Violation:
+      type: object
+      properties:
+        id:
+          type: string
+        rule_id:
+          type: string
+        rule_name:
+          type: string
+        field_name:
+          type: string
+        before_value:
+          type: string
+        after_value:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        ai_suggestion:
+          type: string
+        ai_confidence:
+          type: number
+        detected_at:
+          type: string
+          format: date-time
+
+    CleaningHistory:
+      type: object
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          enum: [auto_fix, ai_fix, manual_fix, revert]
+        field_name:
+          type: string
+        before_value:
+          type: string
+        after_value:
+          type: string
+        modified_by:
+          type: string
+        modified_at:
+          type: string
+          format: date-time
+        notes:
+          type: string
+
+    CorrectionRequest:
+      type: object
+      properties:
+        table_code:
+          type: string
+        record_id:
+          type: string
+        corrections:
+          type: array
+          items:
+            type: object
+            properties:
+              field_name:
+                type: string
+              new_value:
+                type: string
+        notes:
+          type: string
+      required:
+        - table_code
+        - record_id
+        - corrections
+
+    CorrectionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        history_id:
+          type: string
+
+    BatchCorrectionRequest:
+      type: object
+      properties:
+        corrections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CorrectionRequest'
+
+    BatchCorrectionResponse:
+      type: object
+      properties:
+        success_count:
+          type: integer
+        failed_count:
+          type: integer
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              table_code:
+                type: string
+              record_id:
+                type: string
+              error:
+                type: string
+
+    AISuggestion:
+      type: object
+      properties:
+        id:
+          type: string
+        field_name:
+          type: string
+        suggested_value:
+          type: string
+        confidence:
+          type: number
+        reasoning:
+          type: string
+
+    AISuggestionResponse:
+      type: object
+      properties:
+        suggestion_id:
+          type: string
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AISuggestion'
+        model_used:
+          type: string
+
+    DashboardStats:
+      type: object
+      properties:
+        today:
+          type: object
+          properties:
+            total_processed:
+              type: integer
+            auto_fixed:
+              type: integer
+            ai_fixed:
+              type: integer
+            pending_manual:
+              type: integer
+        pending_by_severity:
+          type: object
+          properties:
+            critical:
+              type: integer
+            high:
+              type: integer
+            medium:
+              type: integer
+            low:
+              type: integer
+        pending_by_table:
+          type: array
+          items:
+            type: object
+            properties:
+              table_code:
+                type: string
+              table_name:
+                type: string
+              count:
+                type: integer
+
+    CleaningBatch:
+      type: object
+      properties:
+        id:
+          type: string
+        trigger_type:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+        total_records:
+          type: integer
+        auto_fixed_count:
+          type: integer
+        ai_fixed_count:
+          type: integer
+        manual_count:
+          type: integer

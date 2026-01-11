@@ -203,3 +203,10 @@ ums status | ums memory record "..." | ums memory search "..."
 
 ---
 *繼承自 ~/projects/CLAUDE.md 和 ~/.claude/CLAUDE.md*
+
+## Active Technologies
+- Python 3.11+ (GCP Cloud Functions 原生支援) + google-cloud-bigquery, httpx (OpenRouter), pydantic, PyYAML (001-data-cleaning-v2)
+- BigQuery (asia-east1, dataset: erp_backup) (001-data-cleaning-v2)
+
+## Recent Changes
+- 001-data-cleaning-v2: Added Python 3.11+ (GCP Cloud Functions 原生支援) + google-cloud-bigquery, httpx (OpenRouter), pydantic, PyYAML
