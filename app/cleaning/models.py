@@ -52,6 +52,7 @@ class ActionType(str, Enum):
     """Action types for cleaning history."""
 
     AUTO_FIX = "auto_fix"
+    AUTO_FILL = "auto_fill"
     AI_FIX = "ai_fix"
     MANUAL_FIX = "manual_fix"
     REVERT = "revert"
@@ -241,6 +242,36 @@ class CleaningBatch(BaseModel):
             "ai_fixed_count": self.ai_fixed_count,
             "manual_count": self.manual_count,
             "error_message": self.error_message,
+        }
+
+
+class FillResult(BaseModel):
+    """Result of an auto-fill operation."""
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    table_code: str
+    record_id: str
+    field_name: str
+    rule_id: str
+    before_value: Any | None = None
+    after_value: Any | None = None
+    status: ViolationStatus = ViolationStatus.PENDING
+    batch_id: str | None = None
+    fixed_at: datetime | None = None
+
+    def to_bq_row(self) -> dict[str, Any]:
+        """Convert to BigQuery row format."""
+        return {
+            "id": self.id,
+            "table_code": self.table_code,
+            "record_id": self.record_id,
+            "field_name": self.field_name,
+            "rule_id": self.rule_id,
+            "before_value": str(self.before_value) if self.before_value else None,
+            "after_value": str(self.after_value) if self.after_value else None,
+            "status": self.status.value,
+            "batch_id": self.batch_id,
+            "fixed_at": self.fixed_at.isoformat() if self.fixed_at else None,
         }
 
 

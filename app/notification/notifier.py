@@ -1,200 +1,231 @@
 """
-通知調度器
+Notifier for 資料清洗系統 v2.
 
-統一管理 Email 和 LINE 通知的發送
+Handles notification logic for data cleaning events.
 """
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional
 
-from ..config import now_taipei
-import logging
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from .email_sender import EmailSender
-from .line_sender import LineSender
-from .templates import (
-    build_cleaning_report_email,
-    build_cleaning_report_line,
-    build_error_notification_email,
-)
-from .sanitize import redact_mapping, redact_error_message
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+from app.cleaning.models import CleaningBatch
+from app.notification.email_sender import EmailSender, get_email_sender
 
 
 class Notifier:
-    """通知調度器"""
+    """Handles notification dispatch based on cleaning events."""
 
-    def __init__(
-        self,
-        email_sender: Optional[EmailSender] = None,
-        line_sender: Optional[LineSender] = None,
-    ):
-        """
-        初始化通知調度器
+    def __init__(self, email_sender: EmailSender | None = None):
+        """Initialize notifier.
 
         Args:
-            email_sender: Email 發送器（可選）
-            line_sender: LINE 發送器（可選）
+            email_sender: Email sender instance. Defaults to shared sender.
         """
-        self.email_sender = email_sender or EmailSender()
-        self.line_sender = line_sender or LineSender()
+        self.email_sender = email_sender or get_email_sender()
 
-    def send_cleaning_report(
-        self,
-        cleaning_result: Dict[str, Any],
-        force_send: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        發送清洗報告通知
-
-        Args:
-            cleaning_result: 清洗結果
-            force_send: 是否強制發送（即使無待處理項目）
-
-        Returns:
-            發送結果 {
-                'email': Optional[bool],  # True=成功, False=失敗, None=未嘗試
-                'line': Optional[bool],
-                'skipped': bool,
-                'errors': list,
-            }
-        """
-        result: Dict[str, Any] = {
-            'email': None,
-            'line': None,
-            'skipped': False,
-            'errors': [],
-            'sent_at': now_taipei().isoformat(),
-        }
-
-        manual_count = cleaning_result.get('manual_required', 0)
-
-        # 檢查是否需要發送
-        if not force_send and manual_count == 0:
-            logger.info("無待處理項目，跳過通知")
-            result['skipped'] = True
-            # 語意修正：skipped 時 email/line 保持 None（未嘗試）
-            return result
-
-        # 發送 Email
-        if self.email_sender.is_configured():
-            try:
-                subject, body = build_cleaning_report_email(cleaning_result)
-                result['email'] = self.email_sender.send(subject, body)
-                if not result['email']:
-                    result['errors'].append('Email 發送失敗')
-            except Exception as e:
-                logger.exception("Email 發送異常")
-                result['email'] = False
-                result['errors'].append(f'Email 異常: {type(e).__name__}')
-        else:
-            logger.info("Email 未配置，跳過")
-
-        # 發送 LINE
-        if self.line_sender.is_configured():
-            try:
-                message = build_cleaning_report_line(cleaning_result)
-                result['line'] = self.line_sender.send(message)
-                if not result['line']:
-                    result['errors'].append('LINE 發送失敗')
-            except Exception as e:
-                logger.exception("LINE 發送異常")
-                result['line'] = False
-                result['errors'].append(f'LINE 異常: {type(e).__name__}')
-        else:
-            logger.info("LINE 未配置，跳過")
-
-        # 記錄結果
-        logger.info(
-            f"清洗報告通知: email={result['email']}, line={result['line']}, "
-            f"errors={len(result['errors'])}"
+        # Configuration from environment
+        self.app_url = os.environ.get(
+            "DATA_CORRECTION_APP_URL", "https://correction.ragic-edp.example.com"
+        )
+        self.escalation_days = int(os.environ.get("ESCALATION_DAYS", "3"))
+        self.enable_notifications = (
+            os.environ.get("ENABLE_NOTIFICATIONS", "true").lower() == "true"
         )
 
-        return result
-
-    def send_error_notification(
-        self,
-        error_type: str,
-        error_message: str,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        發送錯誤通知
+    def notify_batch_complete(self, batch: CleaningBatch) -> bool:
+        """Send notification when a cleaning batch completes.
 
         Args:
-            error_type: 錯誤類型
-            error_message: 錯誤訊息
-            context: 額外上下文
+            batch: Completed batch
 
         Returns:
-            發送結果
+            True if notification sent
         """
-        result: Dict[str, Any] = {
-            'email': None,
-            'line': None,
-            'errors': [],
-            'sent_at': now_taipei().isoformat(),
+        if not self.enable_notifications:
+            logger.debug("Notifications disabled, skipping batch complete notification")
+            return False
+
+        if batch.status == "failed":
+            return self._notify_batch_failed(batch)
+
+        # Only notify if there are pending items
+        if batch.manual_count == 0:
+            logger.info("No pending items, skipping notification")
+            return True
+
+        context = {
+            "batch_id": batch.id,
+            "processed_records": batch.processed_records,
+            "auto_fixed_count": batch.auto_fixed_count,
+            "ai_fixed_count": batch.ai_fixed_count,
+            "manual_count": batch.manual_count,
         }
 
-        # 遮罩敏感資訊
-        safe_message = redact_error_message(error_message)
-        safe_context = redact_mapping(context) if context else None
+        return self.email_sender.send_template("cleaning_summary", context)
 
-        # 發送 Email
-        if self.email_sender.is_configured():
-            try:
-                subject, body = build_error_notification_email(
-                    error_type, safe_message, safe_context
-                )
-                result['email'] = self.email_sender.send(subject, body)
-            except Exception as e:
-                result['email'] = False
-                result['errors'].append(f'Email 異常: {type(e).__name__}')
+    def _notify_batch_failed(self, batch: CleaningBatch) -> bool:
+        """Send notification when a batch fails."""
+        context = {
+            "batch_id": batch.id,
+            "error_message": batch.error_message or "Unknown error",
+        }
 
-        # 發送 LINE（簡短版本，只送摘要）
-        if self.line_sender.is_configured():
-            try:
-                # 簡化 LINE 訊息，避免敏感資訊外洩
-                line_message = (
-                    f"\n!! RagicEDP 錯誤\n\n"
-                    f"類型: {error_type}\n"
-                    f"訊息: {safe_message[:100]}"
-                )
-                if len(safe_message) > 100:
-                    line_message += "..."
-                result['line'] = self.line_sender.send(line_message)
-            except Exception as e:
-                result['line'] = False
-                result['errors'].append(f'LINE 異常: {type(e).__name__}')
+        return self.email_sender.send_template("cleaning_failed", context)
 
-        return result
+    def notify_pending_violations(
+        self,
+        violations_summary: dict[str, Any],
+    ) -> bool:
+        """Send notification about pending violations.
 
-    def test_connections(self) -> Dict[str, Any]:
-        """
-        測試所有通知管道連接
+        Args:
+            violations_summary: Summary of pending violations
 
         Returns:
-            測試結果
+            True if notification sent
         """
-        result: Dict[str, Any] = {
-            'email': {
-                'configured': self.email_sender.is_configured(),
-                'test_sent': False,
-            },
-            'line': {
-                'configured': self.line_sender.is_configured(),
-                'test_sent': False,
-                'status': None,
-            },
+        if not self.enable_notifications:
+            return False
+
+        count = violations_summary.get("total", 0)
+        if count == 0:
+            return True
+
+        # Build table summary HTML
+        by_table = violations_summary.get("by_table", {})
+        table_lines = [f"<li>{table}: {count}</li>" for table, count in by_table.items()]
+        table_summary = "\n".join(table_lines)
+
+        context = {
+            "count": count,
+            "critical_count": violations_summary.get("critical", 0),
+            "high_count": violations_summary.get("high", 0),
+            "medium_count": violations_summary.get("medium", 0),
+            "low_count": violations_summary.get("low", 0),
+            "table_summary": table_summary,
+            "app_url": self.app_url,
         }
 
-        # 測試 Email
-        if result['email']['configured']:
-            result['email']['test_sent'] = self.email_sender.send_test()
+        return self.email_sender.send_template("pending_violations", context)
 
-        # 測試 LINE
-        if result['line']['configured']:
-            result['line']['status'] = self.line_sender.get_status()
-            result['line']['test_sent'] = self.line_sender.send_test()
+    def notify_escalation(
+        self,
+        overdue_records: list[dict[str, Any]],
+    ) -> bool:
+        """Send escalation notification for overdue items.
 
-        return result
+        Args:
+            overdue_records: List of overdue violation records
+
+        Returns:
+            True if notification sent
+        """
+        if not self.enable_notifications:
+            return False
+
+        if not overdue_records:
+            return True
+
+        # Build records table HTML
+        rows = []
+        for record in overdue_records[:20]:  # Limit to 20 items
+            days = record.get("days_overdue", 0)
+            rows.append(
+                f"<tr><td>{record.get('record_id', '')}</td>"
+                f"<td>{record.get('table_code', '')}</td>"
+                f"<td>{record.get('field_name', '')}</td>"
+                f"<td>{record.get('before_value', '')}</td>"
+                f"<td>{days}</td></tr>"
+            )
+
+        context = {
+            "count": len(overdue_records),
+            "days": self.escalation_days,
+            "records_table": "\n".join(rows),
+            "app_url": self.app_url,
+        }
+
+        return self.email_sender.send_template("escalation_reminder", context)
+
+    def check_escalations(
+        self,
+        pending_violations: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Check for violations that need escalation.
+
+        Args:
+            pending_violations: List of pending violations
+
+        Returns:
+            List of overdue violations
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.escalation_days)
+        overdue = []
+
+        for v in pending_violations:
+            detected_at = v.get("detected_at")
+            if detected_at:
+                # Parse ISO format
+                if isinstance(detected_at, str):
+                    try:
+                        detected_at = datetime.fromisoformat(detected_at.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+
+                if detected_at < cutoff:
+                    days_overdue = (datetime.now(timezone.utc) - detected_at).days
+                    v["days_overdue"] = days_overdue
+                    overdue.append(v)
+
+        return overdue
+
+    def run_escalation_check(
+        self,
+        result_writer: Any,
+    ) -> bool:
+        """Run escalation check and send notifications.
+
+        Args:
+            result_writer: ResultWriter to query pending violations
+
+        Returns:
+            True if escalation check completed
+        """
+        try:
+            # Get pending violations
+            pending = result_writer.get_pending_violations(limit=1000)
+
+            # Check for overdue items
+            overdue = self.check_escalations(pending)
+
+            if overdue:
+                logger.info(f"Found {len(overdue)} overdue violations")
+                self.notify_escalation(overdue)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Escalation check failed: {e}")
+            return False
+
+
+# =============================================================================
+# Module-level convenience functions
+# =============================================================================
+
+_default_notifier: Notifier | None = None
+
+
+def get_notifier() -> Notifier:
+    """Get the default notifier (singleton)."""
+    global _default_notifier
+    if _default_notifier is None:
+        _default_notifier = Notifier()
+    return _default_notifier
+
+
+def notify_batch_complete(batch: CleaningBatch) -> bool:
+    """Notify about batch completion using the default notifier."""
+    return get_notifier().notify_batch_complete(batch)

@@ -10,11 +10,15 @@ from typing import Any
 
 from loguru import logger
 
+from app.ai.analyzer import AIAnalyzer, get_analyzer
+from app.cleaning.auto_filler import AutoFiller, get_filler
 from app.cleaning.field_fixer import FieldFixer, get_field_fixer
+from app.notification.notifier import Notifier, get_notifier
 from app.cleaning.models import (
     CleaningBatch,
     CleaningResult,
     CleaningStatus,
+    FillResult,
     Violation,
 )
 from app.cleaning.result_writer import ResultWriter, get_result_writer
@@ -30,6 +34,9 @@ class CleaningEngine:
         self,
         sql_cleaner: SQLCleaner | None = None,
         field_fixer: FieldFixer | None = None,
+        auto_filler: AutoFiller | None = None,
+        ai_analyzer: AIAnalyzer | None = None,
+        notifier: Notifier | None = None,
         result_writer: ResultWriter | None = None,
     ):
         """Initialize cleaning engine.
@@ -37,10 +44,16 @@ class CleaningEngine:
         Args:
             sql_cleaner: SQL cleaner instance
             field_fixer: Field fixer instance
+            auto_filler: Auto filler instance
+            ai_analyzer: AI analyzer instance
+            notifier: Notifier instance
             result_writer: Result writer instance
         """
         self.sql_cleaner = sql_cleaner or get_sql_cleaner()
         self.field_fixer = field_fixer or get_field_fixer()
+        self.auto_filler = auto_filler or get_filler()
+        self.ai_analyzer = ai_analyzer or get_analyzer()
+        self.notifier = notifier or get_notifier()
         self.result_writer = result_writer or get_result_writer()
         self.registry = get_registry()
         self.symbol_config = get_symbol_config()
@@ -48,6 +61,9 @@ class CleaningEngine:
         # Configuration
         self.batch_size = int(os.environ.get("CLEANING_BATCH_SIZE", "100"))
         self.max_records = int(os.environ.get("CLEANING_MAX_RECORDS", "10000"))
+        self.enable_auto_fill = os.environ.get("ENABLE_AUTO_FILL", "true").lower() == "true"
+        self.enable_ai = os.environ.get("ENABLE_AI_ANALYSIS", "true").lower() == "true"
+        self.enable_notifications = os.environ.get("ENABLE_NOTIFICATIONS", "true").lower() == "true"
 
     def run(
         self,
@@ -92,6 +108,13 @@ class CleaningEngine:
 
         finally:
             self.result_writer.complete_batch(batch)
+
+            # Send notification
+            if self.enable_notifications:
+                try:
+                    self.notifier.notify_batch_complete(batch)
+                except Exception as e:
+                    logger.warning(f"Failed to send notification: {e}")
 
         return batch
 
@@ -162,6 +185,8 @@ class CleaningEngine:
             "total_records": 0,
             "violations_found": 0,
             "auto_fixed": 0,
+            "ai_fixed": 0,
+            "auto_filled": 0,
             "pending_manual": 0,
         }
 
@@ -172,33 +197,82 @@ class CleaningEngine:
             )
             stats["violations_found"] = len(violations)
 
-            if not violations:
-                logger.info(f"Table {table_code}: No violations found")
-                return stats
+            # Phase 2: Auto-fix violations
+            fixed_violations: list[Violation] = []
+            histories = []
 
-            # Phase 2: Auto-fix
-            fixed_violations, histories = self.field_fixer.fix_violations(violations)
+            if violations:
+                fixed_violations, histories = self.field_fixer.fix_violations(violations)
 
-            # Count results
-            auto_fixed = len([v for v in fixed_violations if v.status.value == "auto_fixed"])
-            pending = len([v for v in fixed_violations if v.status.value == "pending"])
+                # Count results
+                auto_fixed = len([v for v in fixed_violations if v.status.value == "auto_fixed"])
+                pending = len([v for v in fixed_violations if v.status.value == "pending"])
 
-            stats["auto_fixed"] = auto_fixed
-            stats["pending_manual"] = pending
+                stats["auto_fixed"] = auto_fixed
+                stats["pending_manual"] = pending
 
-            # Update batch counts
-            batch.processed_records += len(set(v.record_id for v in fixed_violations))
-            batch.auto_fixed_count += auto_fixed
-            batch.manual_count += pending
+                # Update batch counts
+                batch.processed_records += len(set(v.record_id for v in fixed_violations))
+                batch.auto_fixed_count += auto_fixed
+                batch.manual_count += pending
+
+            # Phase 3: Auto-fill missing fields
+            fill_results: list[FillResult] = []
+            if self.enable_auto_fill:
+                fill_results = self.auto_filler.fill_table(
+                    table_code, batch.id, limit=self.max_records
+                )
+                fill_histories = self.auto_filler.create_histories(fill_results)
+                histories.extend(fill_histories)
+
+                auto_filled = len([r for r in fill_results if r.status.value == "auto_fixed"])
+                stats["auto_filled"] = auto_filled
+                batch.auto_fixed_count += auto_filled
+
+                logger.info(f"Table {table_code}: auto_filled={auto_filled}")
+
+            # Phase 4: AI Analysis for pending violations
+            if self.enable_ai and fixed_violations:
+                pending_violations = [
+                    v for v in fixed_violations if v.status.value == "pending"
+                ]
+
+                if pending_violations:
+                    logger.info(
+                        f"Running AI analysis on {len(pending_violations)} pending violations"
+                    )
+
+                    # Analyze with AI
+                    ai_results = self.ai_analyzer.analyze_violations_batch(
+                        pending_violations,
+                        table_context={"table_code": table_code},
+                    )
+
+                    # Apply high-confidence suggestions
+                    fixed_violations, ai_fixed_count = self.ai_analyzer.apply_suggestions(
+                        fixed_violations, ai_results
+                    )
+
+                    stats["ai_fixed"] = ai_fixed_count
+                    batch.ai_fixed_count += ai_fixed_count
+
+                    # Update pending count
+                    pending = len([v for v in fixed_violations if v.status.value == "pending"])
+                    stats["pending_manual"] = pending
+                    batch.manual_count = pending
+
+                    logger.info(f"Table {table_code}: ai_fixed={ai_fixed_count}")
 
             # Write results
-            self._write_results(batch, table_code, fixed_violations, histories)
+            self._write_results(batch, table_code, fixed_violations, histories, fill_results)
 
             logger.info(
                 f"Table {table_code}: "
                 f"violations={len(violations)}, "
-                f"auto_fixed={auto_fixed}, "
-                f"pending={pending}"
+                f"auto_fixed={stats['auto_fixed']}, "
+                f"ai_fixed={stats['ai_fixed']}, "
+                f"auto_filled={stats['auto_filled']}, "
+                f"pending={stats['pending_manual']}"
             )
 
         except Exception as e:
@@ -213,6 +287,7 @@ class CleaningEngine:
         table_code: str,
         violations: list[Violation],
         histories: list,
+        fill_results: list[FillResult] | None = None,
     ) -> None:
         """Write cleaning results to BigQuery."""
         # Group violations by record
@@ -249,6 +324,10 @@ class CleaningEngine:
 
         if histories:
             self.result_writer.write_history_batch(histories)
+
+        # Write fill results
+        if fill_results:
+            self.result_writer.write_fill_results(fill_results)
 
     def _determine_status(self, violations: list[Violation]) -> CleaningStatus:
         """Determine overall status for a record based on its violations."""

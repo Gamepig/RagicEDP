@@ -1,142 +1,223 @@
 """
-Email 發送器
+Email Sender for 資料清洗系統 v2.
 
-使用 SMTP 發送通知郵件
+Sends email notifications using SMTP (Gmail).
 """
+
+import os
 import smtplib
-import ssl
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import List, Optional
-import logging
+from email.mime.text import MIMEText
+from typing import Any
 
-from .config import NotificationConfig, get_config
+from loguru import logger
+from pydantic import BaseModel, Field
 
-logger = logging.getLogger(__name__)
 
-# 預設超時（秒）
-DEFAULT_TIMEOUT = 30
+class EmailConfig(BaseModel):
+    """Configuration for email sending."""
+
+    smtp_server: str = Field(default="smtp.gmail.com")
+    smtp_port: int = Field(default=587)
+    from_email: str = Field(default="")
+    from_password: str = Field(default="")
+    to_email: str = Field(default="")
+
+    @classmethod
+    def from_env(cls) -> "EmailConfig":
+        """Load configuration from environment variables."""
+        return cls(
+            smtp_server=os.environ.get("SMTP_SERVER", "smtp.gmail.com"),
+            smtp_port=int(os.environ.get("SMTP_PORT", "587")),
+            from_email=os.environ.get("SMTP_FROM_EMAIL", ""),
+            from_password=os.environ.get("SMTP_FROM_PASSWORD", ""),
+            to_email=os.environ.get("NOTIFICATION_EMAIL", ""),
+        )
+
+    def is_configured(self) -> bool:
+        """Check if email is properly configured."""
+        return bool(self.from_email and self.from_password and self.to_email)
 
 
 class EmailSender:
-    """Email 發送器"""
+    """Sends email notifications via SMTP."""
 
-    def __init__(
-        self,
-        smtp_server: Optional[str] = None,
-        smtp_port: Optional[int] = None,
-        from_email: Optional[str] = None,
-        from_password: Optional[str] = None,
-        config: Optional[NotificationConfig] = None,
-        timeout: int = DEFAULT_TIMEOUT,
-    ):
-        """
-        初始化 Email 發送器
+    def __init__(self, config: EmailConfig | None = None):
+        """Initialize email sender.
 
         Args:
-            smtp_server: SMTP 伺服器（優先於 config）
-            smtp_port: SMTP 埠號（優先於 config）
-            from_email: 發送者 Email（優先於 config）
-            from_password: 發送者密碼（優先於 config）
-            config: 通知配置（可選，預設從環境變數載入）
-            timeout: 連線超時秒數
+            config: Email configuration. Defaults to loading from env.
         """
-        cfg = config or get_config()
+        self.config = config or EmailConfig.from_env()
 
-        self.smtp_server = smtp_server or cfg.smtp_server
-        self.smtp_port = smtp_port or cfg.smtp_port
-        self.from_email = from_email or cfg.from_email
-        self.from_password = from_password or cfg.from_password
-        self.default_recipients = list(cfg.to_emails)
-        self.timeout = timeout
-
-    def is_configured(self) -> bool:
-        """檢查是否已配置"""
-        return bool(
-            self.smtp_server and
-            self.smtp_port and
-            self.from_email and
-            self.from_password
-        )
+        if not self.config.is_configured():
+            logger.warning("Email not fully configured, notifications will be skipped")
 
     def send(
         self,
         subject: str,
         body: str,
-        recipients: Optional[List[str]] = None,
-        html_body: Optional[str] = None,
+        to_email: str | None = None,
+        is_html: bool = False,
     ) -> bool:
-        """
-        發送 Email
+        """Send an email.
 
         Args:
-            subject: 郵件主旨
-            body: 郵件內容（純文字）
-            recipients: 收件者列表（預設使用配置）
-            html_body: HTML 格式內容（可選）
+            subject: Email subject
+            body: Email body (plain text or HTML)
+            to_email: Recipient email. Defaults to config.to_email
+            is_html: Whether body is HTML
 
         Returns:
-            是否發送成功
+            True if sent successfully
         """
-        if not self.is_configured():
-            logger.warning("Email 未配置，跳過發送")
+        if not self.config.is_configured():
+            logger.warning("Email not configured, skipping send")
             return False
 
-        recipients = recipients or self.default_recipients
-        recipients = [r.strip() for r in recipients if r.strip()]
-
-        if not recipients:
-            logger.warning("無收件者，跳過發送")
-            return False
+        to_email = to_email or self.config.to_email
 
         try:
-            msg = MIMEMultipart('alternative')
-            msg['From'] = self.from_email
-            msg['To'] = ', '.join(recipients)
-            msg['Subject'] = subject
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = self.config.from_email
+            msg["To"] = to_email
 
-            # 添加純文字內容
-            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+            # Attach body
+            content_type = "html" if is_html else "plain"
+            msg.attach(MIMEText(body, content_type, "utf-8"))
 
-            # 添加 HTML 內容（如果有）
-            if html_body:
-                msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+            # Send via SMTP
+            with smtplib.SMTP(self.config.smtp_server, self.config.smtp_port) as server:
+                server.starttls()
+                server.login(self.config.from_email, self.config.from_password)
+                server.sendmail(self.config.from_email, to_email, msg.as_string())
 
-            # 建立 SSL context
-            ssl_ctx = ssl.create_default_context()
-
-            # 發送（明確 timeout + TLS）
-            with smtplib.SMTP(
-                self.smtp_server,
-                self.smtp_port,
-                timeout=self.timeout
-            ) as server:
-                server.ehlo()
-                server.starttls(context=ssl_ctx)
-                server.ehlo()
-                server.login(self.from_email, self.from_password)
-                server.send_message(msg)
-
-            logger.info(f"Email 發送成功: {subject} -> {len(recipients)} 位收件者")
+            logger.info(f"Email sent to {to_email}: {subject}")
             return True
 
-        except smtplib.SMTPAuthenticationError as e:
-            logger.error(f"Email 認證失敗: {e}")
-            return False
-        except smtplib.SMTPException as e:
-            logger.error(f"Email 發送失敗 (SMTP): {e}")
-            return False
-        except (TimeoutError, OSError) as e:
-            # 包含 socket.timeout 和其他連線錯誤
-            logger.error(f"Email 連線錯誤: {type(e).__name__}")
-            return False
         except Exception as e:
-            logger.exception(f"Email 發送失敗: {type(e).__name__}")
+            logger.error(f"Failed to send email: {e}")
             return False
 
-    def send_test(self) -> bool:
-        """發送測試郵件"""
-        return self.send(
-            subject="[RagicEDP] Email 測試",
-            body="這是一封測試郵件，用於確認 Email 通知功能正常運作。",
-        )
+    def send_template(
+        self,
+        template_name: str,
+        context: dict[str, Any],
+        to_email: str | None = None,
+    ) -> bool:
+        """Send email using a template.
+
+        Args:
+            template_name: Template name (maps to _get_template)
+            context: Template context variables
+            to_email: Recipient email
+
+        Returns:
+            True if sent successfully
+        """
+        template = self._get_template(template_name)
+        if not template:
+            logger.error(f"Unknown template: {template_name}")
+            return False
+
+        subject = template["subject"].format(**context)
+        body = template["body"].format(**context)
+
+        return self.send(subject, body, to_email, is_html=template.get("is_html", False))
+
+    def _get_template(self, name: str) -> dict[str, Any] | None:
+        """Get email template by name."""
+        templates = {
+            "cleaning_summary": {
+                "subject": "[RagicEDP] 資料清洗完成 - {batch_id}",
+                "body": """
+資料清洗批次 {batch_id} 已完成。
+
+統計摘要：
+- 處理記錄數: {processed_records}
+- 自動修正: {auto_fixed_count}
+- AI 修正: {ai_fixed_count}
+- 待人工處理: {manual_count}
+
+詳情請登入資料修正介面查看。
+""",
+                "is_html": False,
+            },
+            "pending_violations": {
+                "subject": "[RagicEDP] 待處理資料異常 ({count} 筆)",
+                "body": """<html>
+<body>
+<h2>待處理資料異常通知</h2>
+<p>目前有 <strong>{count}</strong> 筆資料問題需要人工處理：</p>
+
+<h3>依嚴重程度分類</h3>
+<ul>
+<li>Critical: {critical_count}</li>
+<li>High: {high_count}</li>
+<li>Medium: {medium_count}</li>
+<li>Low: {low_count}</li>
+</ul>
+
+<h3>依表格分類</h3>
+<ul>
+{table_summary}
+</ul>
+
+<p><a href="{app_url}">登入資料修正介面處理</a></p>
+</body>
+</html>""",
+                "is_html": True,
+            },
+            "escalation_reminder": {
+                "subject": "[RagicEDP] 提醒：{count} 筆資料已逾期未處理",
+                "body": """<html>
+<body>
+<h2>資料處理逾期提醒</h2>
+<p>以下資料問題已超過 {days} 天未處理：</p>
+
+<table border="1" cellpadding="5">
+<tr><th>記錄ID</th><th>表格</th><th>欄位</th><th>問題</th><th>天數</th></tr>
+{records_table}
+</table>
+
+<p><a href="{app_url}">立即處理</a></p>
+</body>
+</html>""",
+                "is_html": True,
+            },
+            "cleaning_failed": {
+                "subject": "[RagicEDP] 警告：資料清洗失敗 - {batch_id}",
+                "body": """
+資料清洗批次 {batch_id} 執行失敗！
+
+錯誤訊息：
+{error_message}
+
+請檢查系統日誌並排除問題。
+""",
+                "is_html": False,
+            },
+        }
+
+        return templates.get(name)
+
+
+# =============================================================================
+# Module-level convenience functions
+# =============================================================================
+
+_default_sender: EmailSender | None = None
+
+
+def get_email_sender() -> EmailSender:
+    """Get the default email sender (singleton)."""
+    global _default_sender
+    if _default_sender is None:
+        _default_sender = EmailSender()
+    return _default_sender
+
+
+def send_email(subject: str, body: str, to_email: str | None = None) -> bool:
+    """Send email using the default sender."""
+    return get_email_sender().send(subject, body, to_email)

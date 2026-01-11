@@ -14,6 +14,7 @@ from app.cleaning.models import (
     CleaningBatch,
     CleaningHistory,
     CleaningResult,
+    FillResult,
     Violation,
 )
 from app.utils.bq_client import BigQueryClient, get_bq_client
@@ -35,6 +36,7 @@ class ResultWriter:
         self.violations_table = os.environ.get("VIOLATIONS_TABLE", "violations")
         self.history_table = os.environ.get("CLEANING_HISTORY_TABLE", "cleaning_history")
         self.batches_table = os.environ.get("CLEANING_BATCHES_TABLE", "cleaning_batches")
+        self.fill_results_table = os.environ.get("FILL_RESULTS_TABLE", "fill_results")
 
     # =========================================================================
     # Batch Operations
@@ -297,6 +299,32 @@ class ResultWriter:
         if errors:
             logger.error(f"Failed to write {len(errors)} history records")
 
+        return success_count
+
+    # =========================================================================
+    # Fill Results Operations
+    # =========================================================================
+
+    def write_fill_results(self, fill_results: list[FillResult]) -> int:
+        """Write fill results to BigQuery.
+
+        Args:
+            fill_results: List of FillResult to write
+
+        Returns:
+            Number of successfully written records
+        """
+        if not fill_results:
+            return 0
+
+        rows = [r.to_bq_row() for r in fill_results]
+        errors = self.bq_client.insert_rows(self.fill_results_table, rows)
+
+        success_count = len(fill_results) - len(errors)
+        if errors:
+            logger.error(f"Failed to write {len(errors)} fill results")
+
+        logger.debug(f"Wrote {success_count} fill results")
         return success_count
 
     # =========================================================================
