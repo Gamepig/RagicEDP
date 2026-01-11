@@ -7,7 +7,7 @@ Loads and manages YAML cleaning rules from the rules/ directory.
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Union
 
 import yaml
 from loguru import logger
@@ -28,6 +28,142 @@ class FixLogic(BaseModel):
     pattern: str | None = Field(None, description="Regex pattern for replacement")
     replacement: str | None = Field(None, description="Replacement value")
     value: Any | None = Field(None, description="Default value")
+
+
+# =============================================================================
+# FillRule Models (for fill_rules.yaml)
+# =============================================================================
+
+
+class FillTrigger(BaseModel):
+    """Trigger condition for fill rules."""
+
+    condition: str = Field(..., description="SQL condition or 'always'")
+
+
+class FillLogic(BaseModel):
+    """Fill logic with SQL query."""
+
+    type: Literal["sql_query"] = "sql_query"
+    query: str = Field(..., description="BigQuery SQL query")
+
+
+class FillSource(BaseModel):
+    """Fill source for cascade fill rules."""
+
+    source_table: int | None = None
+    source_table_name: str | None = None
+    lookup_key: str | None = None
+    source_field: str | None = None
+    priority: int = 1
+    ai_task: str | None = None
+    input_field: str | None = None
+    confidence_threshold: float | None = None
+
+
+class DerivedFormula(BaseModel):
+    """Formula for derived fields."""
+
+    type: Literal["sql"] = "sql"
+    expression: str = Field(..., description="SQL expression")
+
+
+class BaseFillRule(BaseModel):
+    """Base model for all fill rules with common fields."""
+
+    id: str = Field(..., pattern=r"^FILL-[A-Z]+-\d{3}$")
+    name: str = Field(..., min_length=1, max_length=100)
+    tables: list[str]
+    target_field: str = Field(..., description="Target field to fill")
+    target_field_id: str | int | None = None
+    auto_fixable: bool | str = True  # Can be "partial"
+    priority: str = Field(default="P2", pattern=r"^P[1-3]$")
+    severity: str = Field(default="medium", pattern=r"^(critical|high|medium|low)$")
+    note: str | None = None
+    description: str | None = None
+
+    @field_validator("tables")
+    @classmethod
+    def validate_tables(cls, v: list[str]) -> list[str]:
+        valid = ["10", "20", "30", "40", "41", "50", "60", "70", "80", "99"]
+        for table in v:
+            if table not in valid:
+                raise ValueError(f"Invalid table code: {table}. Must be one of {valid}")
+        return v
+
+
+class AutoFillRule(BaseFillRule):
+    """Auto fill rule - SQL query based (FILL-CUST-*)."""
+
+    type: Literal["auto_fill"] = "auto_fill"
+    category: Literal["customer_stats"] = "customer_stats"
+    source: str = Field(default="order_detail_calculation")
+    trigger: FillTrigger
+    fill_logic: FillLogic
+    refresh: Literal["once", "daily", "weekly"] = "daily"
+    data_type: str | None = None
+
+
+class LookupFillRule(BaseFillRule):
+    """Lookup fill rule - FK based (FILL-OD-001 to 004)."""
+
+    type: Literal["lookup_fill"] = "lookup_fill"
+    category: Literal["order_lookup"] = "order_lookup"
+    source_table: int = Field(..., description="Source table code")
+    source_table_name: str = Field(..., description="Source table BQ name")
+    lookup_key: str = Field(..., description="Field to match on")
+    source_field: str = Field(..., description="Field to retrieve")
+    trigger: FillTrigger
+    affected_count: int | None = None
+
+
+class CascadeFillRule(BaseFillRule):
+    """Cascade fill rule - Multiple sources (FILL-OD-005, 006)."""
+
+    type: Literal["cascade_fill"] = "cascade_fill"
+    category: Literal["order_lookup"] = "order_lookup"
+    trigger: FillTrigger
+    fill_sources: list[FillSource] = Field(..., description="Ordered fill sources")
+    affected_count: int | None = None
+
+
+class DerivedFieldRule(BaseFillRule):
+    """Derived field rule - Computed fields (FILL-DERIVED-*)."""
+
+    type: Literal["derived_field"] = "derived_field"
+    category: Literal["derived"] = "derived"
+    data_type: Literal["boolean", "string"] = "string"
+    formula: DerivedFormula
+    depends_on: list[str] = Field(default_factory=list, description="Rule dependencies")
+    valid_values: list[str] | None = None
+    refresh: Literal["on_insert", "daily", "weekly"] = "on_insert"
+    marketing_use: str | None = None
+    thresholds: dict[str, int] | None = None
+    remote_regions: dict[str, list[str]] | None = None
+    example: str | None = None
+
+
+# Union type for all fill rules
+FillRule = Annotated[
+    Union[AutoFillRule, LookupFillRule, CascadeFillRule, DerivedFieldRule],
+    Field(discriminator="type"),
+]
+
+
+def parse_fill_rule(data: dict[str, Any]) -> BaseFillRule:
+    """Parse a fill rule from dict based on type."""
+    rule_type = data.get("type", "auto_fill")
+
+    if rule_type == "auto_fill":
+        return AutoFillRule(**data)
+    elif rule_type == "lookup_fill":
+        return LookupFillRule(**data)
+    elif rule_type == "cascade_fill":
+        return CascadeFillRule(**data)
+    elif rule_type == "derived_field":
+        return DerivedFieldRule(**data)
+    else:
+        raise ValueError(f"Unknown fill rule type: {rule_type}")
 
 
 class SqlSource(BaseModel):
@@ -146,6 +282,12 @@ class RuleRegistry:
         self._rules_by_table: dict[str, list[CleaningRule]] = {}
         self._loaded = False
 
+        # Fill rules (separate storage)
+        self._fill_rules: dict[str, BaseFillRule] = {}
+        self._fill_rules_by_type: dict[str, list[BaseFillRule]] = {}
+        self._fill_rules_by_table: dict[str, list[BaseFillRule]] = {}
+        self._fill_loaded = False
+
     def load_all_rules(self) -> int:
         """Load all rules from YAML files.
 
@@ -165,8 +307,8 @@ class RuleRegistry:
             # Also check for .yml extension
             rule_files = list(self.rules_dir.glob("*.yml"))
 
-        # Exclude schema.yaml
-        rule_files = [f for f in rule_files if f.name != "schema.yaml"]
+        # Exclude schema.yaml and fill_rules.yaml (has separate loader)
+        rule_files = [f for f in rule_files if f.name not in ("schema.yaml", "fill_rules.yaml")]
 
         total_loaded = 0
         for rule_file in rule_files:
@@ -218,6 +360,103 @@ class RuleRegistry:
             if table not in self._rules_by_table:
                 self._rules_by_table[table] = []
             self._rules_by_table[table].append(rule)
+
+    # =========================================================================
+    # Fill Rules Loading
+    # =========================================================================
+
+    def load_fill_rules(self) -> int:
+        """Load fill rules from fill_rules.yaml.
+
+        Returns:
+            Number of fill rules loaded
+        """
+        fill_file = self.rules_dir / "fill_rules.yaml"
+        if not fill_file.exists():
+            logger.warning(f"Fill rules file not found: {fill_file}")
+            return 0
+
+        self._fill_rules.clear()
+        self._fill_rules_by_type.clear()
+        self._fill_rules_by_table.clear()
+
+        try:
+            with open(fill_file, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+
+            if not data or "rules" not in data:
+                logger.warning(f"No rules found in {fill_file}")
+                return 0
+
+            loaded = 0
+            for rule_data in data["rules"]:
+                try:
+                    rule = parse_fill_rule(rule_data)
+                    self._register_fill_rule(rule)
+                    loaded += 1
+                except Exception as e:
+                    logger.error(f"Invalid fill rule: {rule_data.get('id', 'unknown')}: {e}")
+
+            self._fill_loaded = True
+            logger.info(f"Loaded {loaded} fill rules from {fill_file.name}")
+            return loaded
+
+        except Exception as e:
+            logger.error(f"Failed to load fill rules: {e}")
+            return 0
+
+    def _register_fill_rule(self, rule: BaseFillRule) -> None:
+        """Register a fill rule in all indexes."""
+        # Primary index by ID
+        if rule.id in self._fill_rules:
+            logger.warning(f"Duplicate fill rule ID: {rule.id}, overwriting")
+        self._fill_rules[rule.id] = rule
+
+        # Type index
+        rule_type = rule.type
+        if rule_type not in self._fill_rules_by_type:
+            self._fill_rules_by_type[rule_type] = []
+        self._fill_rules_by_type[rule_type].append(rule)
+
+        # Table index
+        for table in rule.tables:
+            if table not in self._fill_rules_by_table:
+                self._fill_rules_by_table[table] = []
+            self._fill_rules_by_table[table].append(rule)
+
+    def _ensure_fill_loaded(self) -> None:
+        """Ensure fill rules are loaded."""
+        if not self._fill_loaded:
+            self.load_fill_rules()
+
+    def get_fill_rule(self, rule_id: str) -> BaseFillRule | None:
+        """Get fill rule by ID."""
+        self._ensure_fill_loaded()
+        return self._fill_rules.get(rule_id)
+
+    def get_fill_rules_by_type(self, rule_type: str) -> list[BaseFillRule]:
+        """Get fill rules by type (auto_fill, lookup_fill, cascade_fill, derived_field)."""
+        self._ensure_fill_loaded()
+        return self._fill_rules_by_type.get(rule_type, [])
+
+    def get_fill_rules_by_table(self, table_code: str) -> list[BaseFillRule]:
+        """Get fill rules that apply to a table."""
+        self._ensure_fill_loaded()
+        return self._fill_rules_by_table.get(table_code, [])
+
+    def get_all_fill_rules(self) -> list[BaseFillRule]:
+        """Get all fill rules."""
+        self._ensure_fill_loaded()
+        return list(self._fill_rules.values())
+
+    def get_fill_stats(self) -> dict[str, Any]:
+        """Get statistics about loaded fill rules."""
+        self._ensure_fill_loaded()
+        return {
+            "total_fill_rules": len(self._fill_rules),
+            "by_type": {k: len(v) for k, v in self._fill_rules_by_type.items()},
+            "by_table": {k: len(v) for k, v in self._fill_rules_by_table.items()},
+        }
 
     def get_rule(self, rule_id: str) -> CleaningRule | None:
         """Get rule by ID."""
@@ -283,6 +522,7 @@ class RuleRegistry:
     def get_stats(self) -> dict[str, Any]:
         """Get statistics about loaded rules."""
         self._ensure_loaded()
+        self._ensure_fill_loaded()
         return {
             "total_rules": len(self._rules),
             "enabled_rules": len([r for r in self._rules.values() if r.enabled]),
@@ -300,12 +540,20 @@ class RuleRegistry:
                 "low": len(self.get_rules_by_severity("low")),
             },
             "auto_fixable": len([r for r in self._rules.values() if r.auto_fixable]),
+            "fill_rules": self.get_fill_stats(),
         }
 
-    def reload(self) -> int:
-        """Reload all rules from files."""
+    def reload(self) -> tuple[int, int]:
+        """Reload all rules from files.
+
+        Returns:
+            Tuple of (validation_rules_count, fill_rules_count)
+        """
         self._loaded = False
-        return self.load_all_rules()
+        self._fill_loaded = False
+        validation_count = self.load_all_rules()
+        fill_count = self.load_fill_rules()
+        return validation_count, fill_count
 
 
 # =============================================================================
@@ -336,3 +584,29 @@ def get_validation_rules(table_code: str | None = None) -> list[CleaningRule]:
 def get_fill_rules(table_code: str | None = None, phase: int | None = None) -> list[CleaningRule]:
     """Get fill rules from the default registry."""
     return get_registry().get_fill_rules(table_code, phase)
+
+
+# Fill rules convenience functions
+def load_fill_rules() -> int:
+    """Load fill rules from fill_rules.yaml."""
+    return get_registry().load_fill_rules()
+
+
+def get_fill_rule_by_id(rule_id: str) -> BaseFillRule | None:
+    """Get a fill rule by ID."""
+    return get_registry().get_fill_rule(rule_id)
+
+
+def get_fill_rules_by_type(rule_type: str) -> list[BaseFillRule]:
+    """Get fill rules by type (auto_fill, lookup_fill, cascade_fill, derived_field)."""
+    return get_registry().get_fill_rules_by_type(rule_type)
+
+
+def get_all_fill_rules() -> list[BaseFillRule]:
+    """Get all fill rules."""
+    return get_registry().get_all_fill_rules()
+
+
+def get_fill_stats() -> dict[str, Any]:
+    """Get fill rules statistics."""
+    return get_registry().get_fill_stats()
