@@ -1,0 +1,599 @@
+# 自動補足規則配置
+# 版本: v1.0
+# 建立日期: 2026-01-11
+# 說明: 從現有資料自動補足缺失欄位
+
+metadata:
+  version: "1.0"
+  created: "2026-01-11"
+  description: "自動補足規則 - 客戶統計、訂單關聯、衍生欄位"
+  total_rules: 20
+
+# ============================================================
+# 第一部分: 客戶統計補足規則 (FILL-CUST)
+# 從訂單明細表計算客戶統計資料
+# ============================================================
+
+rules:
+  # ---------------------------------------------------------
+  # FILL-CUST-001: 首購品牌補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-001
+    name: 首購品牌補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 首購品牌
+    target_field_id: null  # 待確認欄位 ID
+    source: order_detail_calculation
+    trigger:
+      condition: "首購品牌 IS NULL OR 首購品牌 = ''"
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT JSON_VALUE(data, '$.品牌編號') as brand_code
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+        ORDER BY JSON_VALUE(data, '$.訂單日期') ASC
+        LIMIT 1
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    refresh: once  # 只需填一次
+
+  # ---------------------------------------------------------
+  # FILL-CUST-002: 來源通路補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-002
+    name: 來源通路補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 來源通路
+    target_field_id: null
+    source: order_detail_calculation
+    trigger:
+      condition: "來源通路 IS NULL OR 來源通路 = ''"
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT JSON_VALUE(data, '$.通路編號') as channel_code
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+        ORDER BY JSON_VALUE(data, '$.訂單日期') ASC
+        LIMIT 1
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    refresh: once
+
+  # ---------------------------------------------------------
+  # FILL-CUST-003: 累積消費金額補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-003
+    name: 累積消費金額補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 累積消費金額
+    target_field_id: null
+    source: order_detail_calculation
+    trigger:
+      condition: always  # 每次都更新
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT COALESCE(SUM(SAFE_CAST(JSON_VALUE(data, '$.訂單實收') AS FLOAT64)), 0) as total_amount
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    refresh: daily
+
+  # ---------------------------------------------------------
+  # FILL-CUST-004: 訂單次數補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-004
+    name: 訂單次數補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 訂單次數
+    target_field_id: null
+    source: order_detail_calculation
+    trigger:
+      condition: always
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT COUNT(DISTINCT JSON_VALUE(data, '$.訂單編號')) as order_count
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    refresh: daily
+
+  # ---------------------------------------------------------
+  # FILL-CUST-005: 首購日期補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-005
+    name: 首購日期補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 首購日期
+    target_field_id: null
+    source: order_detail_calculation
+    trigger:
+      condition: "首購日期 IS NULL OR 首購日期 = ''"
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT MIN(JSON_VALUE(data, '$.訂單日期')) as first_order_date
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    refresh: once
+
+  # ---------------------------------------------------------
+  # FILL-CUST-006: 最後購買日期補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-006
+    name: 最後購買日期補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 最後購買日期
+    target_field_id: null
+    source: order_detail_calculation
+    trigger:
+      condition: always
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT MAX(JSON_VALUE(data, '$.訂單日期')) as last_order_date
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    refresh: daily
+
+  # ---------------------------------------------------------
+  # FILL-CUST-007: 購買品牌清單補足
+  # ---------------------------------------------------------
+  - id: FILL-CUST-007
+    name: 購買品牌清單補足
+    type: auto_fill
+    category: customer_stats
+    tables: [60]
+    target_field: 購買品牌清單
+    target_field_id: null
+    source: order_detail_calculation
+    trigger:
+      condition: always
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT STRING_AGG(DISTINCT JSON_VALUE(data, '$.品牌編號'), ',') as brand_list
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.客戶編號') = @customer_code
+    data_type: string
+    auto_fixable: true
+    priority: P3
+    severity: low
+    refresh: daily
+
+# ============================================================
+# 第二部分: 訂單明細關聯補足規則 (FILL-OD)
+# 從關聯表補足訂單明細表欄位
+# ============================================================
+
+  # ---------------------------------------------------------
+  # FILL-OD-001: 通路名稱補足
+  # ---------------------------------------------------------
+  - id: FILL-OD-001
+    name: 通路名稱補足
+    type: lookup_fill
+    category: order_lookup
+    tables: [99]
+    target_field: 通路名稱
+    target_field_id: null
+    source_table: 20
+    source_table_name: sheet_20_channel
+    lookup_key: 通路編號
+    source_field: 通路名稱
+    trigger:
+      condition: "通路名稱 IS NULL AND 通路編號 IS NOT NULL"
+    affected_count: 1
+    auto_fixable: true
+    priority: P2
+    severity: medium
+
+  # ---------------------------------------------------------
+  # FILL-OD-002: 客戶名稱補足
+  # ---------------------------------------------------------
+  - id: FILL-OD-002
+    name: 客戶名稱補足
+    type: lookup_fill
+    category: order_lookup
+    tables: [99]
+    target_field: 客戶名稱
+    target_field_id: null
+    source_table: 60
+    source_table_name: sheet_60_customer
+    lookup_key: 客戶編號
+    source_field: 客戶名稱
+    trigger:
+      condition: "客戶名稱 IS NULL AND 客戶編號 IS NOT NULL"
+    affected_count: 3
+    auto_fixable: true
+    priority: P2
+    severity: medium
+
+  # ---------------------------------------------------------
+  # FILL-OD-003: 商品建議售價補足
+  # ---------------------------------------------------------
+  - id: FILL-OD-003
+    name: 商品建議售價補足
+    type: lookup_fill
+    category: order_lookup
+    tables: [99]
+    target_field: 商品建議售價
+    target_field_id: null
+    source_table: 70
+    source_table_name: sheet_70_product
+    lookup_key: 商品編號
+    source_field: 商品建議售價
+    trigger:
+      condition: "商品建議售價 IS NULL AND 商品編號 IS NOT NULL"
+    affected_count: 3416
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    note: "使用商品表當前價格，歷史訂單價格可能有差異"
+
+  # ---------------------------------------------------------
+  # FILL-OD-004: 商品常態售價補足
+  # ---------------------------------------------------------
+  - id: FILL-OD-004
+    name: 商品常態售價補足
+    type: lookup_fill
+    category: order_lookup
+    tables: [99]
+    target_field: 商品常態售價
+    target_field_id: null
+    source_table: 70
+    source_table_name: sheet_70_product
+    lookup_key: 商品編號
+    source_field: 商品常態售價
+    trigger:
+      condition: "商品常態售價 IS NULL AND 商品編號 IS NOT NULL"
+    auto_fixable: true
+    priority: P3
+    severity: low
+
+  # ---------------------------------------------------------
+  # FILL-OD-005: 收件人姓名補足
+  # ---------------------------------------------------------
+  - id: FILL-OD-005
+    name: 收件人姓名補足
+    type: cascade_fill
+    category: order_lookup
+    tables: [99]
+    target_field: 收件人姓名
+    target_field_id: null
+    trigger:
+      condition: "收件人姓名 IS NULL"
+    fill_sources:
+      - source_table: 50
+        source_table_name: sheet_50_order
+        lookup_key: 訂單編號
+        source_field: 收件人姓名
+        priority: 1
+      - source_table: 60
+        source_table_name: sheet_60_customer
+        lookup_key: 客戶編號
+        source_field: 客戶名稱
+        priority: 2
+    affected_count: 48
+    auto_fixable: true
+    priority: P2
+    severity: medium
+
+  # ---------------------------------------------------------
+  # FILL-OD-006: 郵遞區號補足
+  # ---------------------------------------------------------
+  - id: FILL-OD-006
+    name: 郵遞區號補足
+    type: cascade_fill
+    category: order_lookup
+    tables: [99]
+    target_field: 郵遞區號
+    target_field_id: null
+    trigger:
+      condition: "郵遞區號 IS NULL"
+    fill_sources:
+      - source_table: 50
+        source_table_name: sheet_50_order
+        lookup_key: 訂單編號
+        source_field: 郵遞區號
+        priority: 1
+      - ai_task: address_to_zipcode
+        input_field: 收件地址
+        priority: 2
+        confidence_threshold: 0.9
+    affected_count: 204
+    auto_fixable: partial  # 部分需 AI
+    priority: P2
+    severity: medium
+
+# ============================================================
+# 第三部分: 衍生欄位自動計算規則 (FILL-DERIVED)
+# 根據現有欄位計算衍生分析欄位
+# ============================================================
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-001: 首購標記
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-001
+    name: 首購標記
+    type: derived_field
+    category: derived
+    tables: [99]
+    target_field: _is_first_purchase
+    data_type: boolean
+    formula:
+      type: sql
+      expression: |
+        JSON_VALUE(data, '$.訂單日期') = (
+          SELECT MIN(JSON_VALUE(sub.data, '$.訂單日期'))
+          FROM `{project}.{dataset}.sheet_99_order_detail` sub
+          WHERE JSON_VALUE(sub.data, '$.客戶編號') = JSON_VALUE(main.data, '$.客戶編號')
+        )
+    auto_fixable: true
+    refresh: on_insert
+    marketing_use: "新客獲取成本分析、首購轉換率"
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-002: 贈品標記
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-002
+    name: 贈品標記
+    type: derived_field
+    category: derived
+    tables: [99]
+    target_field: _is_gift
+    data_type: boolean
+    formula:
+      type: sql
+      expression: |
+        (SAFE_CAST(JSON_VALUE(data, '$.訂單實收') AS FLOAT64) = 0
+         AND SAFE_CAST(JSON_VALUE(data, '$.數量') AS INT64) > 0)
+        OR JSON_VALUE(data, '$.商品名稱') LIKE '%贈品%'
+        OR JSON_VALUE(data, '$.商品名稱') LIKE '%附贈%'
+    auto_fixable: true
+    refresh: on_insert
+    marketing_use: "促銷成本分析、贈品效果評估"
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-003: 免運標記
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-003
+    name: 免運標記
+    type: derived_field
+    category: derived
+    tables: [99]
+    target_field: _is_free_shipping
+    data_type: boolean
+    formula:
+      type: sql
+      expression: |
+        SAFE_CAST(JSON_VALUE(data, '$.運費收入') AS FLOAT64) = 0
+        AND JSON_VALUE(data, '$.物流編號') IS NOT NULL
+    auto_fixable: true
+    refresh: on_insert
+    marketing_use: "免運活動成本分析"
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-004: 離島/偏遠地區標記
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-004
+    name: 離島偏遠地區標記
+    type: derived_field
+    category: derived
+    tables: [99]
+    target_field: _is_remote_area
+    data_type: boolean
+    formula:
+      type: sql
+      expression: |
+        JSON_VALUE(data, '$.郵遞區號') IN (
+          '880', '881', '882', '883', '884', '885',
+          '890', '891', '892', '893', '894', '895', '896',
+          '209', '210', '211', '212'
+        )
+    remote_regions:
+      penghu: ['880', '881', '882', '883', '884', '885']
+      kinmen: ['890', '891', '892', '893', '894', '895', '896']
+      matsu: ['209', '210', '211', '212']
+    auto_fixable: true
+    refresh: on_insert
+    marketing_use: "運費成本分析、區域行銷策略"
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-005: 配送方式分類
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-005
+    name: 配送方式分類
+    type: derived_field
+    category: derived
+    tables: [99]
+    target_field: _delivery_type
+    data_type: string
+    formula:
+      type: sql
+      expression: |
+        CASE
+          WHEN JSON_VALUE(data, '$.物流名稱') LIKE '%超取%'
+               OR JSON_VALUE(data, '$.物流名稱') LIKE '%店取%'
+               OR JSON_VALUE(data, '$.物流名稱') LIKE '%7-11%'
+               OR JSON_VALUE(data, '$.物流名稱') LIKE '%全家%'
+               OR JSON_VALUE(data, '$.物流名稱') LIKE '%萊爾富%'
+               OR JSON_VALUE(data, '$.物流名稱') LIKE '%OK%' THEN 'STORE'
+          WHEN JSON_VALUE(data, '$.物流名稱') LIKE '%自取%'
+               OR JSON_VALUE(data, '$.物流名稱') LIKE '%門市%' THEN 'PICKUP'
+          ELSE 'HOME'
+        END
+    valid_values: [HOME, STORE, PICKUP]
+    auto_fixable: true
+    refresh: on_insert
+    marketing_use: "配送偏好分析、門市據點規劃"
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-006: 客戶沉睡狀態
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-006
+    name: 客戶沉睡狀態
+    type: derived_field
+    category: derived
+    tables: [60]
+    target_field: _customer_status
+    data_type: string
+    depends_on: [FILL-CUST-006]
+    formula:
+      type: sql
+      expression: |
+        CASE
+          WHEN DATE_DIFF(CURRENT_DATE(),
+               SAFE.PARSE_DATE('%Y/%m/%d', SUBSTR(JSON_VALUE(data, '$.最後購買日期'), 1, 10)),
+               DAY) <= 90 THEN 'ACTIVE'
+          WHEN DATE_DIFF(CURRENT_DATE(),
+               SAFE.PARSE_DATE('%Y/%m/%d', SUBSTR(JSON_VALUE(data, '$.最後購買日期'), 1, 10)),
+               DAY) <= 180 THEN 'DORMANT'
+          WHEN DATE_DIFF(CURRENT_DATE(),
+               SAFE.PARSE_DATE('%Y/%m/%d', SUBSTR(JSON_VALUE(data, '$.最後購買日期'), 1, 10)),
+               DAY) <= 365 THEN 'AT_RISK'
+          ELSE 'CHURNED'
+        END
+    valid_values: [ACTIVE, DORMANT, AT_RISK, CHURNED]
+    thresholds:
+      active: 90
+      dormant: 180
+      at_risk: 365
+    auto_fixable: true
+    refresh: daily
+    marketing_use: "喚醒行銷、流失預警"
+
+  # ---------------------------------------------------------
+  # FILL-DERIVED-007: 客戶 RFM 分數
+  # ---------------------------------------------------------
+  - id: FILL-DERIVED-007
+    name: 客戶RFM分數
+    type: derived_field
+    category: derived
+    tables: [60]
+    target_field: _rfm_score
+    data_type: string
+    depends_on: [FILL-CUST-003, FILL-CUST-004, FILL-CUST-006]
+    formula:
+      type: sql
+      expression: |
+        CONCAT(
+          CAST(NTILE(5) OVER (ORDER BY
+            SAFE.PARSE_DATE('%Y/%m/%d', SUBSTR(JSON_VALUE(data, '$.最後購買日期'), 1, 10)) DESC
+          ) AS STRING),
+          CAST(NTILE(5) OVER (ORDER BY
+            SAFE_CAST(JSON_VALUE(data, '$.訂單次數') AS INT64)
+          ) AS STRING),
+          CAST(NTILE(5) OVER (ORDER BY
+            SAFE_CAST(JSON_VALUE(data, '$.累積消費金額') AS FLOAT64)
+          ) AS STRING)
+        )
+    description: "RFM 分數：Recency-Frequency-Monetary，每項 1-5 分"
+    example: "555"  # 最高價值客戶
+    auto_fixable: true
+    refresh: weekly
+    marketing_use: "客戶分群、VIP 識別、行銷資源分配"
+
+# ============================================================
+# 執行配置
+# ============================================================
+
+execution:
+  # 執行階段
+  phases:
+    phase_1:
+      name: 關聯表補足
+      rules: [FILL-OD-001, FILL-OD-002, FILL-OD-003, FILL-OD-004]
+      parallel: true
+      description: "從關聯表補足基礎資料"
+
+    phase_2:
+      name: 客戶統計計算
+      rules: [FILL-CUST-001, FILL-CUST-002, FILL-CUST-003, FILL-CUST-004, FILL-CUST-005, FILL-CUST-006, FILL-CUST-007]
+      parallel: false  # 順序執行
+      depends_on: phase_1
+      description: "計算客戶統計欄位"
+
+    phase_3:
+      name: 衍生欄位計算
+      rules: [FILL-DERIVED-001, FILL-DERIVED-002, FILL-DERIVED-003, FILL-DERIVED-004, FILL-DERIVED-005]
+      parallel: true
+      depends_on: phase_1
+      description: "計算訂單衍生分析欄位"
+
+    phase_4:
+      name: 客戶狀態計算
+      rules: [FILL-DERIVED-006, FILL-DERIVED-007]
+      parallel: false
+      depends_on: phase_2
+      description: "計算客戶狀態與 RFM"
+
+    phase_5:
+      name: 需審核項目
+      rules: [FILL-OD-005, FILL-OD-006]
+      parallel: true
+      mode: manual_review
+      description: "需要人工或 AI 輔助的項目"
+
+  # 排程
+  schedule:
+    on_insert:
+      rules: [FILL-OD-001, FILL-OD-002, FILL-OD-003, FILL-OD-004,
+              FILL-DERIVED-001, FILL-DERIVED-002, FILL-DERIVED-003,
+              FILL-DERIVED-004, FILL-DERIVED-005]
+      description: "新資料進入時執行"
+
+    daily:
+      rules: [FILL-CUST-003, FILL-CUST-004, FILL-CUST-006, FILL-CUST-007, FILL-DERIVED-006]
+      time: "04:00"  # UTC (12:00 台北)
+      description: "每日更新統計欄位"
+
+    weekly:
+      rules: [FILL-DERIVED-007]
+      day: monday
+      time: "05:00"  # UTC
+      description: "每週更新 RFM 分數"
+
+# ============================================================
+# 統計摘要
+# ============================================================
+
+summary:
+  total_rules: 20
+  by_category:
+    customer_stats: 7
+    order_lookup: 6
+    derived: 7
+  by_auto_fixable:
+    fully_auto: 19
+    partial_auto: 1  # FILL-OD-006 需 AI
+  affected_records:
+    customer_table: 40027
+    order_detail_lookup: ~3700
+    derived_fields: all_records

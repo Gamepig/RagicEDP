@@ -1,0 +1,104 @@
+# 關聯規則 (ASSOC-*)
+# Version: 1.0.0
+# Date: 2026-01-08
+
+rules:
+  # ASSOC-001: 小計 = 單價 * 數量
+  - id: ASSOC-001
+    type: association
+    rule: "小計 = 單價 * 數量"
+    tolerance: 1
+    description: "訂單明細小計須等於單價乘以數量（容差 1 元）"
+    tables: [99]
+    severity: high
+    auto_fixable: false
+
+  # ASSOC-002: 折扣 <= 小計
+  - id: ASSOC-002
+    type: association
+    rule: "折扣 <= 小計"
+    tolerance: 0
+    description: "折扣金額不可大於小計"
+    tables: [99]
+    severity: high
+    auto_fixable: false
+
+  # ASSOC-003: 實收 >= 0
+  - id: ASSOC-003
+    type: association
+    rule: "訂單實收 >= 0"
+    tolerance: 0
+    description: "訂單實收金額須大於等於 0"
+    tables: [50]
+    severity: critical
+    auto_fixable: false
+
+  # ASSOC-004: 單價 >= 成本價
+  - id: ASSOC-004
+    type: association
+    rule: "單價 >= 成本價"
+    tolerance: 0
+    description: "商品單價須大於等於成本價"
+    tables: [70]
+    severity: medium
+    auto_fixable: false
+
+  # ASSOC-005: 明細小計合計 ≈ 訂單總額
+  - id: ASSOC-005
+    type: association
+    rule: "明細小計合計 ≈ 訂單總額"
+    tolerance: 10
+    description: "訂單明細小計合計須接近訂單總額（容差 10 元）"
+    tables: [50, 99]
+    severity: high
+    auto_fixable: false
+
+  # ASSOC-006: 淨額 = 小計 - 折扣
+  - id: ASSOC-006
+    type: association
+    rule: "淨額 = 小計 - 折扣"
+    tolerance: 1
+    description: "淨額須等於小計減折扣"
+    tables: [99]
+    severity: medium
+    auto_fixable: false
+
+  # ASSOC-007: 稅額計算
+  - id: ASSOC-007
+    type: association
+    rule: "稅額 = 稅前金額 * 0.05"
+    tolerance: 1
+    description: "稅額須為稅前金額的 5%"
+    tables: [50]
+    severity: medium
+    auto_fixable: false
+
+  # ASSOC-008: 含稅總額
+  - id: ASSOC-008
+    type: association
+    rule: "含稅總額 = 稅前金額 + 稅額"
+    tolerance: 1
+    description: "含稅總額須等於稅前金額加稅額"
+    tables: [50]
+    severity: medium
+    auto_fixable: false
+
+  # ASSOC-009: 運費合理性
+  - id: ASSOC-009
+    type: association
+    rule: "運費 <= 訂單實收 * 0.2"
+    tolerance: 0
+    description: "運費不應超過訂單實收的 20%"
+    tables: [50]
+    severity: low
+    auto_fixable: false
+
+  # ASSOC-010: 單品金額上限
+  - id: ASSOC-010
+    type: association
+    rule: "小計 <= 訂單實收"
+    tolerance: 0
+    description: "單品小計不應超過整筆訂單實收"
+    tables: [99]
+    severity: medium
+    auto_fixable: false

@@ -1,0 +1,251 @@
+# 必填欄位規則 (REQ-*)
+# Version: 1.0.1
+# Date: 2026-01-08
+# 注意：使用實際 BigQuery 欄位名稱 (英文)
+
+rules:
+  # === 品牌表 (10) ===
+  - id: REQ-001
+    type: required
+    field: brand_code
+    description: "品牌編號為必填"
+    tables: [10]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-002
+    type: required
+    field: brand_name
+    description: "品牌名稱為必填"
+    tables: [10]
+    severity: high
+    auto_fixable: false
+
+  # === 通路表 (20) ===
+  - id: REQ-003
+    type: required
+    field: channel_code
+    description: "通路編號為必填"
+    tables: [20]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-004
+    type: required
+    field: channel_name
+    description: "通路名稱為必填"
+    tables: [20]
+    severity: high
+    auto_fixable: false
+
+  # REQ-005 已移除：通路表無 brand_code 欄位 (2026-01-09)
+
+  # === 金流表 (30) ===
+  - id: REQ-006
+    type: required
+    field: payment_code
+    description: "金流編號為必填"
+    tables: [30]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-007
+    type: required
+    field: payment_name
+    description: "金流名稱為必填"
+    tables: [30]
+    severity: high
+    auto_fixable: false
+
+  # === 物流表 (40) ===
+  - id: REQ-008
+    type: required
+    field: logistics_code
+    description: "物流編號為必填"
+    tables: [40]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-009
+    type: required
+    field: logistics_name
+    description: "物流名稱為必填"
+    tables: [40]
+    severity: high
+    auto_fixable: false
+
+  # === 郵遞區號表 (41) ===
+  - id: REQ-010
+    type: required
+    field: zipcode
+    description: "郵遞區號為必填"
+    tables: [41]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-011
+    type: required
+    field: city
+    description: "縣市為必填"
+    tables: [41]
+    severity: high
+    auto_fixable: false
+
+  # REQ-012 已移除：省轄市（嘉義市、新竹市）沒有鄉鎮區，district 可為空 (2026-01-09)
+
+  # === 訂單表 (50) ===
+  - id: REQ-013
+    type: required
+    field: order_code
+    description: "訂單編號為必填"
+    tables: [50]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-014
+    type: required
+    field: order_date
+    description: "訂單日期為必填"
+    tables: [50]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-015
+    type: required
+    field: customer_code
+    description: "訂單的客戶編號為必填"
+    tables: [50]
+    severity: high
+    auto_fixable: false
+
+  - id: REQ-016
+    type: required
+    field: order_amount
+    description: "訂單實收金額為必填"
+    tables: [50]
+    severity: high
+    auto_fixable: false
+
+  # === 客戶表 (60) ===
+  - id: REQ-017
+    type: required
+    field: customer_code
+    description: "客戶編號為必填"
+    tables: [60]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-018
+    type: required
+    field: customer_name
+    description: "客戶名稱為必填"
+    tables: [60]
+    severity: high
+    auto_fixable: false
+
+  # === 商品表 (70) ===
+  - id: REQ-019
+    type: required
+    field: product_code
+    description: "商品編號為必填"
+    tables: [70]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-020
+    type: required
+    field: product_name
+    description: "商品名稱為必填"
+    tables: [70]
+    severity: high
+    auto_fixable: false
+
+  # REQ-021 已移除：商品表 brand_code 未提取到獨立欄位，
+  # 品牌編號存於 JSON data $.品牌編號，由 View 處理 (2026-01-09)
+
+  - id: REQ-022
+    type: required
+    field: price
+    description: "商品單價為必填"
+    tables: [70]
+    severity: high
+    auto_fixable: false
+
+  # === 活動管理表 (80) ===
+  - id: REQ-023
+    type: required
+    field: campaign_code
+    description: "活動編號為必填"
+    tables: [80]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-024
+    type: required
+    field: campaign_name
+    description: "活動名稱為必填"
+    tables: [80]
+    severity: high
+    auto_fixable: false
+
+  - id: REQ-025
+    type: required
+    field: start_date
+    description: "活動開始日期為必填"
+    tables: [80]
+    severity: high
+    auto_fixable: false
+
+  # REQ-026 已移除：長期/無期限活動的 end_date 可為空 (2026-01-09)
+
+  # === 訂單明細表 (99) ===
+  - id: REQ-027
+    type: required
+    field: order_code
+    description: "訂單明細的訂單編號為必填"
+    tables: [99]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-028
+    type: required
+    field: product_code
+    description: "訂單明細的商品編號為必填"
+    tables: [99]
+    severity: critical
+    auto_fixable: false
+
+  - id: REQ-029
+    type: required
+    field: quantity
+    description: "訂單明細的數量為必填"
+    tables: [99]
+    severity: high
+    auto_fixable: false
+
+  - id: REQ-030
+    type: required
+    field: unit_price
+    description: "訂單明細的單價為必填"
+    tables: [99]
+    severity: high
+    auto_fixable: false
+
+  - id: REQ-031
+    type: required
+    field: subtotal
+    description: "訂單明細的小計為必填"
+    tables: [99]
+    severity: high
+    auto_fixable: false
+
+  # REQ-032 已移除：訂單明細的品牌編號由 View (view_customer_brand) 處理
+  # 與 REQ-021 (商品表 brand_code) 決策一致
+  # 停用日期：2026-01-11
+  # - id: REQ-032
+  #   type: required
+  #   field: brand_code
+  #   description: "訂單明細的品牌編號為必填"
+  #   tables: [99]
+  #   severity: medium
+  #   auto_fixable: false

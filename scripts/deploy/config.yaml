@@ -1,0 +1,83 @@
+# =============================================================================
+# RagicEDP 部署配置文件
+# =============================================================================
+# 此文件為部署的單一真相來源 (Single Source of Truth)
+# 所有部署腳本應從此文件讀取配置
+# =============================================================================
+
+# GCP 專案配置
+gcp:
+  project_id: b25h01-ragic
+  region: asia-east1
+
+# Secret 配置
+# - gcp_name: GCP Secret Manager 中的名稱
+# - env_name: 程式中使用的環境變數名稱
+secrets:
+  - gcp_name: ragic-api-key
+    env_name: RAGIC_API_KEY
+    description: Ragic API 金鑰
+    required: true
+
+  - gcp_name: smtp-password
+    env_name: SMTP_PASSWORD
+    description: SMTP 郵件密碼
+    required: false
+
+# 環境變數配置（非 Secret）
+env_vars:
+  - name: GCP_PROJECT_ID
+    value: b25h01-ragic
+    description: GCP 專案 ID
+
+  - name: BQ_DATASET
+    value: erp_backup
+    description: BigQuery 資料集名稱
+
+# Cloud Functions 配置
+functions:
+  backup-erp-incremental:
+    entry_point: backup_erp_data
+    runtime: python311
+    memory: 1024MB
+    timeout: 540s
+    max_instances: 1
+    secrets:
+      - ragic-api-key
+    env_vars:
+      - GCP_PROJECT_ID
+      - BQ_DATASET
+    service_account: null  # 使用預設
+
+  clean-erp-data:
+    entry_point: clean_erp_data
+    runtime: python311
+    memory: 512MB
+    timeout: 300s
+    max_instances: 1
+    secrets: []
+    env_vars:
+      - GCP_PROJECT_ID
+      - BQ_DATASET
+    service_account: null
+
+# Cloud Run 配置
+cloud_run:
+  data-correction-app:
+    source: data-correction-app
+    memory: 1Gi
+    timeout: 300
+    allow_unauthenticated: false
+
+# 驗證規則
+validation:
+  # 部署前必須通過的檢查
+  pre_deploy:
+    - check_secrets_exist
+    - check_env_file
+    - check_source_files
+
+  # 部署後驗證
+  post_deploy:
+    - verify_function_status
+    - verify_secret_injection

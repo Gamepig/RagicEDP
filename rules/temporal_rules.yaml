@@ -1,0 +1,45 @@
+# 時序邏輯規則 (TEMP-*)
+# Version: 1.0.0
+# Date: 2026-01-08
+
+rules:
+  # TEMP-001: 訂單日期不可為未來
+  - id: TEMP-001
+    type: temporal
+    field: 訂單日期
+    rule: "訂單日期 <= CURRENT_DATE"
+    description: "訂單日期不可為未來日期"
+    tables: [50]
+    severity: high
+    auto_fixable: false
+
+  # TEMP-002: 活動結束日期須 >= 開始日期
+  - id: TEMP-002
+    type: temporal
+    field: 結束日期
+    depends_on: 開始日期
+    rule: "結束日期 >= 開始日期"
+    description: "活動結束日期須晚於或等於開始日期"
+    tables: [80]
+    severity: high
+    auto_fixable: false
+
+  # TEMP-003: 活動開始日期合理性
+  - id: TEMP-003
+    type: temporal
+    field: 開始日期
+    rule: "開始日期 >= 2020-01-01"
+    description: "活動開始日期須在 2020 年之後"
+    tables: [80]
+    severity: medium
+    auto_fixable: false
+
+  # TEMP-004: 訂單日期合理性
+  - id: TEMP-004
+    type: temporal
+    field: 訂單日期
+    rule: "訂單日期 >= 2020-01-01"
+    description: "訂單日期須在 2020 年之後"
+    tables: [50]
+    severity: medium
+    auto_fixable: false

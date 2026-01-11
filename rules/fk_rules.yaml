@@ -1,0 +1,65 @@
+# 外鍵參照規則 (FK-*)
+# Version: 1.0.3
+# Date: 2026-01-08
+# 注意：使用實際 BigQuery 表格與欄位名稱 (英文)
+
+rules:
+  # FK-001: 訂單表 -> 客戶表
+  - id: FK-001
+    type: foreign_key
+    field: customer_code
+    ref_table: sheet_60_customer
+    ref_field: customer_code
+    description: "訂單的客戶編號須存在於客戶表"
+    tables: [50]
+    severity: high
+    auto_fixable: false
+
+  # FK-002: 訂單明細表 -> 訂單表
+  - id: FK-002
+    type: foreign_key
+    field: order_code
+    ref_table: sheet_50_order
+    ref_field: order_code
+    description: "訂單明細的訂單編號須存在於訂單表"
+    tables: [99]
+    severity: critical
+    auto_fixable: false
+
+  # FK-003: 訂單明細表 -> 商品表
+  - id: FK-003
+    type: foreign_key
+    field: product_code
+    ref_table: sheet_70_product
+    ref_field: product_code
+    description: "訂單明細的商品編號須存在於商品表"
+    tables: [99]
+    severity: high
+    auto_fixable: false
+
+  # FK-004: 訂單明細表 -> 品牌表
+  - id: FK-004
+    type: foreign_key
+    field: brand_code
+    ref_table: sheet_10_brand
+    ref_field: brand_code
+    description: "訂單明細的品牌編號須存在於品牌表"
+    tables: [99]
+    severity: medium
+    auto_fixable: false
+
+  # FK-005 已移除：通路表無 brand_code 欄位 (2026-01-09)
+
+  # FK-006 已移除：商品表 brand_code 未提取到獨立欄位，
+  # 品牌編號存於 JSON data $.品牌編號，由 View 處理 (2026-01-09)
+
+  # FK-007: 訂單表 -> 通路表
+  - id: FK-007
+    type: foreign_key
+    field: channel_code
+    ref_table: sheet_20_channel
+    ref_field: channel_code
+    description: "訂單的通路編號須存在於通路表"
+    tables: [50]
+    severity: medium
+    auto_fixable: false

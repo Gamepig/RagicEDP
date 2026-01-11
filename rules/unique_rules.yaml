@@ -1,0 +1,40 @@
+# 唯一性規則 (UNQ-*)
+# Version: 1.0.0
+# Date: 2026-01-08
+
+rules:
+  # UNQ-001: 品牌編號唯一
+  - id: UNQ-001
+    type: unique
+    field: 品牌編號
+    description: "品牌編號在品牌表中須唯一"
+    tables: [10]
+    severity: critical
+    auto_fixable: false
+
+  # UNQ-002: 訂單編號唯一
+  - id: UNQ-002
+    type: unique
+    field: 訂單編號
+    description: "訂單編號在訂單表中須唯一"
+    tables: [50]
+    severity: critical
+    auto_fixable: false
+
+  # UNQ-003: 商品編號唯一
+  - id: UNQ-003
+    type: unique
+    field: 商品編號
+    description: "商品編號在商品表中須唯一"
+    tables: [70]
+    severity: critical
+    auto_fixable: false
+
+  # UNQ-004: 客戶編號唯一
+  - id: UNQ-004
+    type: unique
+    field: 客戶編號
+    description: "客戶編號在客戶表中須唯一"
+    tables: [60]
+    severity: critical
+    auto_fixable: false

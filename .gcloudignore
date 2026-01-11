@@ -1,36 +1,100 @@
+# .gcloudignore
+# Cloud Functions 部署時忽略的檔案
+# 只上傳必要的程式檔案
+
+# ===================
 # Git
-.git
+# ===================
+.git/
 .gitignore
 
-# Python
-__pycache__
+# ===================
+# Python 環境
+# ===================
+.venv/
+__pycache__/
 *.pyc
-.venv
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ===================
+# 環境變數（使用 Secret Manager）
+# ===================
 .env
+.env.*
 
-# IDE
-.vscode
-.idea
+# ===================
+# 本地專用目錄（開頭 _）
+# ===================
+_archived/
+_docs/
+_local/
 
-# Data
-data/
-*.json
+# ===================
+# 開發工具配置
+# ===================
+.claude/
+.code-summary/
+.serena/
+.ums/
+.vscode/
+.idea/
+.mcp.json
+pyrightconfig.json
 
-# Documents
-documents/
+# ===================
+# 文件（不需要部署）
+# ===================
 *.md
+LICENSE
 
-# Tests
-tests/
-test_workspace/
-
-# Others
-*.log
-.DS_Store
-
-# Scripts (not needed for Cloud Function)
+# ===================
+# 腳本與規則（本地使用）
+# ===================
 scripts/
-analysis/
+rules/
 
-# Reference materials
-參考資料/
+# ===================
+# 其他專案（獨立部署）
+# ===================
+data-correction-app/
+
+# ===================
+# 資料與日誌
+# ===================
+*.json
+*.csv
+*.log
+*.sqlite
+*.db
+
+# ===================
+# 系統檔案
+# ===================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ===================
+# 測試
+# ===================
+tests/
+test_*.py
+*_test.py
+conftest.py
+pytest.ini
+.pytest_cache/
+
+# ===================
+# 套件管理（使用 requirements.txt）
+# ===================
+uv.lock
+poetry.lock
+Pipfile
+Pipfile.lock

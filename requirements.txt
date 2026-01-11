@@ -20,3 +20,6 @@ loguru>=0.7.0
 
 # Environment
 python-dotenv>=1.0.0
+
+# YAML (for cleaning rules)
+pyyaml>=6.0

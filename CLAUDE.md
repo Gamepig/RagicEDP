@@ -1,6 +1,63 @@
 # RagicEDP 專案配置
 
-> v1.1 | 2025-01-08 | 精簡版（繼承上層配置）
+> v2.0 | 2026-01-11 | 精簡版（繼承上層配置）
+
+---
+
+## 目錄結構
+
+```
+RagicEDP/
+├── app/                    # 程式碼 (✅ Git)
+│   ├── backup/             # 備份模組 (v3)
+│   ├── cleaning/           # 清洗模組 (v2 待開發)
+│   ├── ai/                 # AI 分析 (v2 待開發)
+│   ├── etl/                # ETL 轉換
+│   ├── notification/       # 通知系統
+│   └── utils/              # 工具函數
+├── scripts/                # 部署腳本 (✅ Git)
+├── rules/                  # 清洗規則 YAML (✅ Git)
+├── data-correction-app/    # 資料修正介面 (✅ Git)
+├── _archived/              # 備份 (❌ Git)
+├── _docs/                  # 文件 (❌ Git)
+│   ├── official/           # 正式文件
+│   ├── planning/           # 規劃文件
+│   └── reference/          # 參考文件
+└── _local/                 # 本地資料 (❌ Git)
+    ├── data/               # 資料檔案
+    ├── logs/               # 日誌
+    └── tests/              # 測試程式
+```
+
+---
+
+## 符號引用規則（防止名稱錯誤）
+
+**在使用任何名稱前，必須先查閱符號索引表**：`.claude/symbols/index.yaml`
+
+### 快速對照表
+
+| 類別 | 命名規範 | 範例 |
+|------|---------|------|
+| GCP Secrets | 小寫+連字號 | `ragic-api-key` |
+| 環境變數 | 大寫+底線 | `RAGIC_API_KEY` |
+| Cloud Functions | 小寫+連字號 | `backup-erp-incremental` |
+| Python 函數 | 小寫+底線 | `backup_erp_data` |
+| BigQuery 表格 | 小寫+底線 | `sheet_10_brand` |
+
+### 關鍵映射
+
+```yaml
+# Secret 部署格式
+--set-secrets=RAGIC_API_KEY=ragic-api-key:latest
+
+# 函數名稱 vs 入口點
+backup-erp-incremental → backup_erp_data
+clean-erp-data → clean_erp_data
+
+# BigQuery 表格格式
+sheet_{代碼}_{英文名稱}  # 例: sheet_50_order
+```
 
 ---
 
@@ -10,7 +67,7 @@ Ragic ERP 資料平台 - 整合資料備份、清理、分析與視覺化功能�
 
 **技術**: Python 3.11+ | UV | BigQuery | Ragic REST API | 正體中文
 
-**開發準則**: `documents/開發準則_v1.md`
+**開發準則**: `_docs/official/開發準則_v1.md`
 
 ---
 
@@ -20,50 +77,55 @@ Ragic ERP 資料平台 - 整合資料備份、清理、分析與視覺化功能�
 
 | 模組 | 路徑 | 說明 |
 |------|------|------|
-| 增量備份核心 | `src/incremental.py` | v3 簡化版 |
-| Cloud Function 入口 | `src/main.py` | HTTP 入口點 |
-| 全量備份 | `src/full_backup.py` | 手動執行 |
-| 手動補抓 | `src/manual_backup.py` | 指定日期 |
-| Email 通知 | `src/utils/email.py` | 失敗通知 |
-| 報告系統 | `src/report_generator.py` | 週報告 |
-| BACKUP-FILTER | 內建於 incremental.py | 規則 A/B/C |
-
-### 已棄用 ⚠️
-
-| 模組 | 說明 |
-|------|------|
-| `src/ragic_client.py` | 由 incremental.py 取代 |
-| `src/backup_runner.py` | 由 incremental.py 取代 |
-| `src/data_filter.py` | 整合至 incremental.py |
+| 增量備份核心 | `app/backup/incremental.py` | v3 簡化版 |
+| Cloud Function 入口 | `app/backup/main.py` | HTTP 入口點 |
+| 全量備份 | `app/backup/full_backup.py` | 手動執行 |
+| 手動補抓 | `app/backup/manual_backup.py` | 指定日期 |
+| BQ 上傳 | `app/backup/bigquery_uploader.py` | BigQuery 上傳 |
+| 配置管理 | `app/backup/config.py` | 環境變數配置 |
 
 ### 待開發 ⏳
 
-| 模組 | 說明 |
-|------|------|
-| 清洗規則引擎 | YAML 配置化規則 |
-| 資料修正介面 | Cloud Run 全端應用 |
+| 模組 | 路徑 | 說明 |
+|------|------|------|
+| 清洗引擎 v2 | `app/cleaning/` | YAML 配置化規則 |
+| AI 分析 v2 | `app/ai/` | OpenRouter 整合 |
+| 資料修正介面 | `data-correction-app/` | Cloud Run 應用 |
 
 ---
 
 ## 常用命令
 
 ```bash
-uv run python analysis/xxx.py           # Python 執行
-uv run pytest -v                        # 測試
-curl -H "Authorization: Basic $RAGIC_API_KEY" "https://ap6.ragic.com/grefun/forms8/17?api&v=3&limit=10"
-bq query --use_legacy_sql=false "SELECT * FROM \`b25h01-ragic.erp_backup.xxx\` LIMIT 10"
+# Python 執行
+uv run python -m app.backup.main
+
+# 測試
+uv run pytest _local/tests/ -v
+
+# Ragic API
+curl -H "Authorization: Basic $RAGIC_API_KEY" \
+  "https://ap6.ragic.com/grefun/forms8/17?api&v=3&limit=10"
+
+# BigQuery
+bq query --use_legacy_sql=false \
+  "SELECT * FROM \`b25h01-ragic.erp_backup.xxx\` LIMIT 10"
+
+# 部署驗證
+uv run python scripts/deploy/validate.py
 ```
 
 ---
 
 ## 文件查詢
 
-**三階段**: `index.md` → `文件摘要.md` → 目標文件
+**三階段**: `_docs/README.md` → 分類目錄 → 目標文件
 
-| 目錄 | 索引 |
-|------|------|
-| `documents/` | `documents/index.md` |
-| `參考資料/` | `參考資料/index.md` |
+| 類別 | 路徑 | 說明 |
+|------|------|------|
+| 正式文件 | `_docs/official/` | 核心規劃、確定設計 |
+| 規劃文件 | `_docs/planning/` | 開發規劃、待確認 |
+| 參考文件 | `_docs/reference/` | 技術研究、知識庫 |
 
 ---
 
@@ -80,8 +142,10 @@ Context > 70% 時：立即輸出未報告的結果。
 ## 專案規則
 
 ### Always
-- 任務前先讀取 index.md
+- 任務前先讀取 `_docs/README.md`
 - 查詢資料前先確認資料量
+- **引用任何名稱前先查閱 `.claude/symbols/index.yaml`**
+- **部署前執行驗證腳本**
 
 ### Ask First
 - 修改資料表結構
@@ -89,6 +153,7 @@ Context > 70% 時：立即輸出未報告的結果。
 
 ### Never
 - 絕不跳過索引直接讀取大文件
+- **絕不猜測名稱，必須查閱符號索引表**
 
 ---
 
@@ -125,20 +190,6 @@ Context > 70% 時：立即輸出未報告的結果。
 專案: b25h01-ragic
 Dataset: erp_backup
 位置: asia-east1
-```
-
----
-
-## 目錄結構
-
-```
-RagicEDP/
-├── documents/       # 專案文件
-├── 參考資料/         # 技術參考
-├── src/             # 程式碼
-├── scripts/         # 正式腳本（✅ Git）
-├── test_workspace/  # 測試程式（❌ Git）
-└── data/            # 資料檔案（❌ Git）
 ```
 
 ---
