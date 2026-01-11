@@ -2,6 +2,7 @@
 Notifier for 資料清洗系統 v2.
 
 Handles notification logic for data cleaning events.
+Supports Email and LINE Messaging API notifications.
 """
 
 import os
@@ -12,18 +13,28 @@ from loguru import logger
 
 from app.cleaning.models import CleaningBatch
 from app.notification.email_sender import EmailSender, get_email_sender
+from app.notification.line_messaging_sender import (
+    LineMessagingSender,
+    get_line_messaging_sender,
+)
 
 
 class Notifier:
     """Handles notification dispatch based on cleaning events."""
 
-    def __init__(self, email_sender: EmailSender | None = None):
+    def __init__(
+        self,
+        email_sender: EmailSender | None = None,
+        line_sender: LineMessagingSender | None = None,
+    ):
         """Initialize notifier.
 
         Args:
             email_sender: Email sender instance. Defaults to shared sender.
+            line_sender: LINE Messaging sender instance. Defaults to shared sender.
         """
         self.email_sender = email_sender or get_email_sender()
+        self.line_sender = line_sender or get_line_messaging_sender()
 
         # Configuration from environment
         self.app_url = os.environ.get(
@@ -41,7 +52,7 @@ class Notifier:
             batch: Completed batch
 
         Returns:
-            True if notification sent
+            True if at least one notification sent
         """
         if not self.enable_notifications:
             logger.debug("Notifications disabled, skipping batch complete notification")
@@ -63,7 +74,26 @@ class Notifier:
             "manual_count": batch.manual_count,
         }
 
-        return self.email_sender.send_template("cleaning_summary", context)
+        # Send Email
+        email_ok = self.email_sender.send_template("cleaning_summary", context)
+
+        # Send LINE
+        line_msg = self._format_batch_complete_line(batch)
+        line_ok = self.line_sender.send(line_msg)
+
+        return email_ok or line_ok
+
+    def _format_batch_complete_line(self, batch: CleaningBatch) -> str:
+        """Format batch completion message for LINE."""
+        return (
+            f"📊 [RagicEDP] 資料清洗完成\n\n"
+            f"批次 ID: {batch.id}\n"
+            f"處理記錄: {batch.processed_records}\n"
+            f"自動修正: {batch.auto_fixed_count}\n"
+            f"AI 修正: {batch.ai_fixed_count}\n"
+            f"待人工處理: {batch.manual_count}\n\n"
+            f"🔗 {self.app_url}"
+        )
 
     def _notify_batch_failed(self, batch: CleaningBatch) -> bool:
         """Send notification when a batch fails."""
@@ -72,7 +102,18 @@ class Notifier:
             "error_message": batch.error_message or "Unknown error",
         }
 
-        return self.email_sender.send_template("cleaning_failed", context)
+        # Send Email
+        email_ok = self.email_sender.send_template("cleaning_failed", context)
+
+        # Send LINE
+        line_msg = (
+            f"❌ [RagicEDP] 資料清洗失敗\n\n"
+            f"批次 ID: {batch.id}\n"
+            f"錯誤: {batch.error_message or 'Unknown error'}"
+        )
+        line_ok = self.line_sender.send(line_msg)
+
+        return email_ok or line_ok
 
     def notify_pending_violations(
         self,
@@ -84,22 +125,22 @@ class Notifier:
             violations_summary: Summary of pending violations
 
         Returns:
-            True if notification sent
+            True if at least one notification sent
         """
         if not self.enable_notifications:
             return False
 
-        count = violations_summary.get("total", 0)
-        if count == 0:
+        total = violations_summary.get("total", 0)
+        if total == 0:
             return True
 
-        # Build table summary HTML
+        # Build table summary HTML for Email
         by_table = violations_summary.get("by_table", {})
-        table_lines = [f"<li>{table}: {count}</li>" for table, count in by_table.items()]
+        table_lines = [f"<li>{table}: {cnt}</li>" for table, cnt in by_table.items()]
         table_summary = "\n".join(table_lines)
 
         context = {
-            "count": count,
+            "count": total,
             "critical_count": violations_summary.get("critical", 0),
             "high_count": violations_summary.get("high", 0),
             "medium_count": violations_summary.get("medium", 0),
@@ -108,7 +149,39 @@ class Notifier:
             "app_url": self.app_url,
         }
 
-        return self.email_sender.send_template("pending_violations", context)
+        # Send Email
+        email_ok = self.email_sender.send_template("pending_violations", context)
+
+        # Send LINE
+        line_msg = self._format_pending_violations_line(violations_summary)
+        line_ok = self.line_sender.send(line_msg)
+
+        return email_ok or line_ok
+
+    def _format_pending_violations_line(
+        self, violations_summary: dict[str, Any]
+    ) -> str:
+        """Format pending violations message for LINE."""
+        total = violations_summary.get("total", 0)
+        critical = violations_summary.get("critical", 0)
+        high = violations_summary.get("high", 0)
+        medium = violations_summary.get("medium", 0)
+        low = violations_summary.get("low", 0)
+
+        by_table = violations_summary.get("by_table", {})
+        table_lines = [f"  • {table}: {cnt}" for table, cnt in by_table.items()]
+        table_text = "\n".join(table_lines) if table_lines else "  (無)"
+
+        return (
+            f"⚠️ [RagicEDP] 待處理違規通知\n\n"
+            f"總計: {total} 筆\n"
+            f"🔴 嚴重: {critical}\n"
+            f"🟠 高: {high}\n"
+            f"🟡 中: {medium}\n"
+            f"🟢 低: {low}\n\n"
+            f"按表格分類:\n{table_text}\n\n"
+            f"🔗 {self.app_url}"
+        )
 
     def notify_escalation(
         self,
@@ -120,7 +193,7 @@ class Notifier:
             overdue_records: List of overdue violation records
 
         Returns:
-            True if notification sent
+            True if at least one notification sent
         """
         if not self.enable_notifications:
             return False
@@ -128,7 +201,7 @@ class Notifier:
         if not overdue_records:
             return True
 
-        # Build records table HTML
+        # Build records table HTML for Email
         rows = []
         for record in overdue_records[:20]:  # Limit to 20 items
             days = record.get("days_overdue", 0)
@@ -147,7 +220,40 @@ class Notifier:
             "app_url": self.app_url,
         }
 
-        return self.email_sender.send_template("escalation_reminder", context)
+        # Send Email
+        email_ok = self.email_sender.send_template("escalation_reminder", context)
+
+        # Send LINE
+        line_msg = self._format_escalation_line(overdue_records)
+        line_ok = self.line_sender.send(line_msg)
+
+        return email_ok or line_ok
+
+    def _format_escalation_line(
+        self, overdue_records: list[dict[str, Any]]
+    ) -> str:
+        """Format escalation message for LINE."""
+        count = len(overdue_records)
+
+        # Show first 5 records
+        record_lines = []
+        for record in overdue_records[:5]:
+            days = record.get("days_overdue", 0)
+            record_id = record.get("record_id", "")[:20]
+            table = record.get("table_code", "")
+            field = record.get("field_name", "")
+            record_lines.append(f"  • [{table}] {record_id} - {field} ({days}天)")
+
+        records_text = "\n".join(record_lines)
+        if count > 5:
+            records_text += f"\n  ... 還有 {count - 5} 筆"
+
+        return (
+            f"🚨 [RagicEDP] 逾期通知\n\n"
+            f"共 {count} 筆記錄超過 {self.escalation_days} 天未處理\n\n"
+            f"部分記錄:\n{records_text}\n\n"
+            f"🔗 {self.app_url}"
+        )
 
     def check_escalations(
         self,
