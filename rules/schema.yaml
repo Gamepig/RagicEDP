@@ -1,0 +1,367 @@
+# =============================================================================
+# 清洗規則 YAML Schema 定義
+# =============================================================================
+# 此檔案定義所有清洗規則 YAML 的結構和驗證規則
+# Version: 1.0.0
+# Date: 2026-01-11
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Schema Metadata
+# -----------------------------------------------------------------------------
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://ragic-edp/schemas/cleaning-rule"
+title: "Cleaning Rule Schema"
+description: "Schema for data cleaning rules in 資料清洗系統 v2"
+version: "1.0.0"
+
+# -----------------------------------------------------------------------------
+# Rule Definition Structure
+# -----------------------------------------------------------------------------
+definitions:
+
+  # ---------------------------------------------------------------------------
+  # 規則基礎結構
+  # ---------------------------------------------------------------------------
+  rule_base:
+    type: object
+    required:
+      - id
+      - name
+      - type
+      - category
+      - tables
+      - field
+      - severity
+      - enabled
+    properties:
+      id:
+        type: string
+        pattern: "^[A-Z]+-[A-Z0-9-]+$"
+        description: |
+          規則 ID，格式: {TYPE}-{CODE}
+          類型前綴:
+            - FMT: 格式驗證
+            - FK: 外鍵參照
+            - NUM: 數值範圍
+            - REQ: 必填欄位
+            - UNQ: 唯一性
+            - TEMP: 時序驗證
+            - ASSOC: 關聯驗證
+            - FILL: 自動補足
+        examples:
+          - "FMT-001"
+          - "FK-001"
+          - "FILL-CUST-001"
+
+      name:
+        type: string
+        minLength: 1
+        maxLength: 100
+        description: "規則名稱 (中文)"
+
+      description:
+        type: string
+        description: "規則說明"
+
+      type:
+        type: string
+        enum:
+          - validation   # 驗證規則
+          - auto_fill    # 自動補足
+          - derived      # 衍生計算
+        description: "規則類型"
+
+      category:
+        type: string
+        enum:
+          - format       # 格式驗證 (FMT-*)
+          - fk           # 外鍵參照 (FK-*)
+          - numeric      # 數值範圍 (NUM-*)
+          - required     # 必填欄位 (REQ-*)
+          - unique       # 唯一性 (UNQ-*)
+          - temporal     # 時序驗證 (TEMP-*)
+          - association  # 關聯驗證 (ASSOC-*)
+          - fill         # 自動補足 (FILL-*)
+        description: "規則分類"
+
+      tables:
+        type: array
+        items:
+          type: string
+          enum: ["10", "20", "30", "40", "41", "50", "60", "70", "80", "99"]
+        minItems: 1
+        description: "適用資料表代碼"
+
+      field:
+        type: string
+        description: "目標欄位名稱"
+
+      severity:
+        type: string
+        enum:
+          - critical  # 嚴重：必須立即處理，阻擋後續流程
+          - high      # 高：應優先處理，可能影響報表
+          - medium    # 中：一般處理，不影響核心流程
+          - low       # 低：可延後處理，純粹美化
+        description: "違規嚴重程度"
+
+      priority:
+        type: string
+        enum: ["P1", "P2", "P3"]
+        default: "P3"
+        description: "執行優先級 (對應 User Story)"
+
+      enabled:
+        type: boolean
+        default: true
+        description: "是否啟用"
+
+      version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+        default: "1.0.0"
+        description: "規則版本 (Semantic Version)"
+
+      tags:
+        type: array
+        items:
+          type: string
+        description: "標籤 (用於篩選)"
+
+  # ---------------------------------------------------------------------------
+  # 格式驗證規則
+  # ---------------------------------------------------------------------------
+  format_rule:
+    allOf:
+      - $ref: "#/definitions/rule_base"
+      - type: object
+        required:
+          - pattern
+        properties:
+          pattern:
+            type: string
+            description: "正則表達式驗證模式"
+          auto_fixable:
+            type: boolean
+            default: false
+          fix_logic:
+            $ref: "#/definitions/fix_logic"
+
+  # ---------------------------------------------------------------------------
+  # 外鍵參照規則
+  # ---------------------------------------------------------------------------
+  fk_rule:
+    allOf:
+      - $ref: "#/definitions/rule_base"
+      - type: object
+        required:
+          - reference_table
+          - reference_field
+        properties:
+          reference_table:
+            type: string
+            enum: ["10", "20", "30", "40", "41", "50", "60", "70", "80", "99"]
+            description: "參照表格代碼"
+          reference_field:
+            type: string
+            description: "參照欄位名稱"
+          allow_null:
+            type: boolean
+            default: false
+            description: "是否允許空值"
+
+  # ---------------------------------------------------------------------------
+  # 數值範圍規則
+  # ---------------------------------------------------------------------------
+  numeric_rule:
+    allOf:
+      - $ref: "#/definitions/rule_base"
+      - type: object
+        properties:
+          min_value:
+            type: number
+            description: "最小值 (含)"
+          max_value:
+            type: number
+            description: "最大值 (含)"
+          allow_null:
+            type: boolean
+            default: true
+          allow_zero:
+            type: boolean
+            default: true
+
+  # ---------------------------------------------------------------------------
+  # 自動補足規則
+  # ---------------------------------------------------------------------------
+  fill_rule:
+    allOf:
+      - $ref: "#/definitions/rule_base"
+      - type: object
+        required:
+          - source
+        properties:
+          source:
+            oneOf:
+              - $ref: "#/definitions/sql_source"
+              - $ref: "#/definitions/lookup_source"
+              - $ref: "#/definitions/compute_source"
+          condition:
+            type: string
+            description: "執行條件 (SQL WHERE 片段)"
+          execution_phase:
+            type: integer
+            enum: [1, 2, 3, 4, 5]
+            default: 3
+            description: |
+              執行階段:
+                1 - 基礎維度 (品牌、通路)
+                2 - 客戶基礎 (客戶欄位)
+                3 - 訂單關聯 (訂單欄位)
+                4 - 衍生計算 (RFM、累積)
+                5 - 最終驗證
+
+  # ---------------------------------------------------------------------------
+  # 修正邏輯定義
+  # ---------------------------------------------------------------------------
+  fix_logic:
+    type: object
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        enum:
+          - regex_replace   # 正則替換
+          - trim            # 去除空白
+          - lowercase       # 轉小寫
+          - uppercase       # 轉大寫
+          - default_value   # 預設值
+          - lookup          # 查表
+          - compute         # 計算
+      pattern:
+        type: string
+        description: "regex_replace 的匹配模式"
+      replacement:
+        type: string
+        description: "regex_replace 的替換值"
+      value:
+        description: "default_value 的預設值"
+
+  # ---------------------------------------------------------------------------
+  # 資料來源定義
+  # ---------------------------------------------------------------------------
+  sql_source:
+    type: object
+    required:
+      - type
+      - query
+    properties:
+      type:
+        const: "sql"
+      query:
+        type: string
+        description: |
+          BigQuery SQL 查詢
+          支援佔位符:
+            - {project}: GCP 專案 ID
+            - {dataset}: BigQuery Dataset
+            - @record_id: 當前記錄 ID
+            - @customer_id: 客戶編號
+
+  lookup_source:
+    type: object
+    required:
+      - type
+      - reference_table
+      - reference_field
+      - match_field
+    properties:
+      type:
+        const: "lookup"
+      reference_table:
+        type: string
+        description: "參照表格代碼"
+      reference_field:
+        type: string
+        description: "取值欄位"
+      match_field:
+        type: string
+        description: "匹配欄位"
+
+  compute_source:
+    type: object
+    required:
+      - type
+      - formula
+    properties:
+      type:
+        const: "compute"
+      formula:
+        type: string
+        description: "計算公式 (Python 表達式)"
+      inputs:
+        type: array
+        items:
+          type: string
+        description: "輸入欄位列表"
+
+# -----------------------------------------------------------------------------
+# 規則檔案結構
+# -----------------------------------------------------------------------------
+rule_file:
+  type: object
+  required:
+    - version
+    - rules
+  properties:
+    version:
+      type: string
+      pattern: "^\\d+\\.\\d+\\.\\d+$"
+    description:
+      type: string
+    rules:
+      type: array
+      items:
+        oneOf:
+          - $ref: "#/definitions/format_rule"
+          - $ref: "#/definitions/fk_rule"
+          - $ref: "#/definitions/numeric_rule"
+          - $ref: "#/definitions/fill_rule"
+
+# -----------------------------------------------------------------------------
+# 表格代碼對照表 (參考用)
+# -----------------------------------------------------------------------------
+# table_codes:
+#   "10": 品牌表 (sheet_10_brand)
+#   "20": 通路表 (sheet_20_channel)
+#   "30": 金流表 (sheet_30_payment)
+#   "40": 物流表 (sheet_40_logistics)
+#   "41": 郵遞區號表 (sheet_41_zipcode)
+#   "50": 訂單表 (sheet_50_order)
+#   "60": 客戶表 (sheet_60_customer)
+#   "70": 商品表 (sheet_70_product)
+#   "80": 活動管理表 (sheet_80_campaign)
+#   "99": 訂單明細表 (sheet_99_order_detail)
+
+# -----------------------------------------------------------------------------
+# 嚴重程度分類標準 (參考用)
+# -----------------------------------------------------------------------------
+# severity_criteria:
+#   critical:
+#     - 違反資料完整性 (如外鍵不存在)
+#     - 可能導致財務錯誤 (如負數金額)
+#     - 系統無法處理的狀態
+#   high:
+#     - 影響報表準確性
+#     - 可能導致業務邏輯錯誤
+#     - 需要優先處理
+#   medium:
+#     - 格式不一致
+#     - 可自動修正的問題
+#     - 不影響核心流程
+#   low:
+#     - 純粹資料美化
+#     - 可延後處理
+#     - 不影響任何流程
