@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Card, Select, Tag, Space, Button, Spin, Alert, Typography } from 'antd'
 import { EyeOutlined, FilterOutlined } from '@ant-design/icons'
@@ -39,27 +39,39 @@ function PendingList() {
     total: 0,
   })
 
-  const fetchRecords = async (page = 1, tableCode?: string) => {
+  // 請求計數器，用於防止競態條件
+  const requestIdRef = useRef(0)
+
+  const fetchRecords = useCallback(async (page = 1, tableCode?: string, pageSize = 20) => {
+    const currentRequestId = ++requestIdRef.current
     setLoading(true)
     try {
       const data = await getPendingRecords({
         table_code: tableCode,
-        limit: pagination.pageSize,
-        offset: (page - 1) * pagination.pageSize,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
       })
-      setRecords(data.records)
-      setPagination((prev) => ({
-        ...prev,
-        current: page,
-        total: data.total,
-      }))
+      // 只有最新的請求才更新狀態
+      if (currentRequestId === requestIdRef.current) {
+        setRecords(data.records)
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+          total: data.total,
+        }))
+      }
     } catch (err) {
-      setError('載入待處理記錄失敗')
-      console.error(err)
+      if (currentRequestId === requestIdRef.current) {
+        setError('載入待處理記錄失敗')
+        console.error(err)
+      }
     } finally {
-      setLoading(false)
+      if (currentRequestId === requestIdRef.current) {
+        setLoading(false)
+      }
     }
-  }
+  }, [])
 
   useEffect(() => {
     const fetchTables = async () => {
@@ -71,19 +83,24 @@ function PendingList() {
       }
     }
     fetchTables()
-    fetchRecords()
-  }, [])
+    fetchRecords(1, undefined, pagination.pageSize)
+  }, [fetchRecords, pagination.pageSize])
 
-  const handleTableChange = (value: string | undefined) => {
+  const handleTableChange = useCallback((value: string | undefined) => {
     setSelectedTable(value)
-    fetchRecords(1, value)
-  }
+    setPagination((prev) => ({ ...prev, current: 1 }))
+    fetchRecords(1, value, pagination.pageSize)
+  }, [fetchRecords, pagination.pageSize])
 
-  const handlePageChange = (page: number) => {
-    fetchRecords(page, selectedTable)
-  }
+  const handlePageChange = useCallback((page: number, pageSize?: number) => {
+    const newPageSize = pageSize || pagination.pageSize
+    // 如果 pageSize 變了，重置到第一頁
+    const newPage = pageSize && pageSize !== pagination.pageSize ? 1 : page
+    fetchRecords(newPage, selectedTable, newPageSize)
+  }, [fetchRecords, selectedTable, pagination.pageSize])
 
-  const columns: ColumnsType<PendingRecord> = [
+  // 使用 useMemo 避免每次渲染重建 columns
+  const columns: ColumnsType<PendingRecord> = useMemo(() => [
     {
       title: '記錄 ID',
       dataIndex: 'record_id',
@@ -187,7 +204,7 @@ function PendingList() {
         </Button>
       ),
     },
-  ]
+  ], [navigate])
 
   if (error) {
     return <Alert type="error" message={error} showIcon />

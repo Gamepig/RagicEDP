@@ -3,8 +3,9 @@
 
 處理待處理記錄查詢、統計等功能
 """
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Tuple
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -25,6 +26,10 @@ router = APIRouter(prefix="/api/data", tags=["data"])
 # BigQuery 服務（延後初始化）
 _bq_service: Optional[BigQueryService] = None
 
+# 統計資訊快取（TTL: 60 秒）
+_stats_cache: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
+STATS_CACHE_TTL = 60  # 秒
+
 
 def get_bq_service() -> BigQueryService:
     """取得 BigQuery 服務"""
@@ -32,6 +37,25 @@ def get_bq_service() -> BigQueryService:
     if _bq_service is None:
         _bq_service = BigQueryService()
     return _bq_service
+
+
+def get_cached_statistics() -> Dict[str, Any]:
+    """取得快取的統計資訊（60 秒 TTL）"""
+    global _stats_cache
+    now = time.time()
+    cache_time, cached_data = _stats_cache
+
+    # 如果快取有效，直接返回
+    if cached_data is not None and (now - cache_time) < STATS_CACHE_TTL:
+        logger.debug(f"使用統計快取（剩餘 {STATS_CACHE_TTL - (now - cache_time):.1f} 秒）")
+        return cached_data
+
+    # 快取過期或不存在，重新查詢
+    bq = get_bq_service()
+    stats = bq.get_statistics()
+    _stats_cache = (now, stats)
+    logger.debug("統計資訊已更新快取")
+    return stats
 
 
 @router.get("/pending", response_model=PaginatedResponse)
@@ -87,10 +111,9 @@ async def get_record_detail(record_id: str):
 
 @router.get("/statistics", response_model=Statistics)
 async def get_statistics():
-    """取得統計資訊"""
+    """取得統計資訊（60 秒快取）"""
     try:
-        bq = get_bq_service()
-        stats = bq.get_statistics()
+        stats = get_cached_statistics()
         return Statistics(**stats)
     except Exception as e:
         logger.exception("取得統計資訊失敗")

@@ -120,29 +120,23 @@ class BigQueryService:
 
         combined_query = ' UNION ALL '.join(union_queries)
 
-        # 計算總數
-        count_query = f"SELECT COUNT(*) as total FROM ({combined_query})"
-        try:
-            count_result = self.client.query(count_query).result()
-            total = list(count_result)[0].total
-        except Exception as e:
-            logger.warning(f"查詢待處理記錄總數失敗: {e}")
-            total = 0
-
-        if total == 0:
-            return {'records': [], 'total': 0, 'limit': limit, 'offset': offset}
-
-        # 查詢記錄（帶分頁）
+        # 使用視窗函數在單一查詢中同時取得計數和資料（優化效能）
         records_query = f"""
-            SELECT * FROM ({combined_query})
+            SELECT
+                *,
+                COUNT(*) OVER() as total_count
+            FROM ({combined_query})
             ORDER BY cleaning_updated_at DESC
             LIMIT {limit} OFFSET {offset}
         """
 
         all_records = []
+        total = 0
         try:
             result = self.client.query(records_query).result()
             for row in result:
+                if total == 0:
+                    total = row.total_count  # 從第一筆記錄取得總數
                 original_values = _parse_json_field(row.data)
                 all_records.append({
                     'record_id': f"{row.table_code}_{row.ragic_id}",
@@ -638,7 +632,7 @@ class BigQueryService:
                 'failed': row.failed or 0,
             })
 
-        # 3. 取得該日期修正的記錄列表（分頁）
+        # 3. 取得該日期修正的記錄列表（分頁）+ 總數（使用視窗函數優化為單一查詢）
         fixed_records_query = f"""
             SELECT
                 record_id,
@@ -646,7 +640,8 @@ class BigQueryService:
                 status,
                 violation_count,
                 confidence_score,
-                cleaned_at
+                cleaned_at,
+                COUNT(*) OVER() as total_count
             FROM `{self.project_id}.{self.dataset}.cleaning_results`
             WHERE DATE(cleaned_at) = @backup_date
               AND status IN ('auto_fixed', 'ai_fixed', 'manual', 'completed')
@@ -665,7 +660,10 @@ class BigQueryService:
         ).result()
 
         fixed_records = []
+        fixed_records_total = 0
         for row in fixed_result:
+            if fixed_records_total == 0:
+                fixed_records_total = row.total_count  # 從第一筆記錄取得總數
             fixed_records.append({
                 'record_id': row.record_id,
                 'table_code': row.table_code,
@@ -674,19 +672,6 @@ class BigQueryService:
                 'confidence_score': row.confidence_score,
                 'cleaned_at': row.cleaned_at.isoformat() if row.cleaned_at else None,
             })
-
-        # 4. 計算修正記錄總數
-        count_query = f"""
-            SELECT COUNT(*) as total
-            FROM `{self.project_id}.{self.dataset}.cleaning_results`
-            WHERE DATE(cleaned_at) = @backup_date
-              AND status IN ('auto_fixed', 'ai_fixed', 'manual', 'completed')
-        """
-        count_result = self.client.query(
-            count_query,
-            job_config=bigquery.QueryJobConfig(query_parameters=params)
-        ).result()
-        fixed_records_total = list(count_result)[0].total
 
         return {
             'backup_date': backup_date,
