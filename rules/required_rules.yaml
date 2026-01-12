@@ -151,11 +151,12 @@ rules:
     type: validation
     category: required
     field: customer_code
-    description: "訂單的客戶編號為必填"
+    description: "訂單的客戶編號為必填（未知客戶訂單仍有銷售統計價值）"
     tables: ["50"]
-    severity: high
+    severity: low  # 2026-01-12 降級：無客戶訂單僅佔 0.04%，不影響整體分析
     enabled: true
     auto_fixable: false
+    note: "無客戶資訊的訂單仍保留用於銷售統計，標記為「未知客戶」"
 
   - id: REQ-016
     name: 訂單實收金額必填驗證
@@ -222,11 +223,15 @@ rules:
     type: validation
     category: required
     field: price
-    description: "商品單價為必填"
+    description: "商品單價為必填（贈品/活動商品除外）"
     tables: ["70"]
     severity: high
     enabled: true
     auto_fixable: false
+    exclude_condition:
+      field: product_name
+      patterns: ["贈品", "活動贈品", "活動", "週年慶活動"]
+    note: "2026-01-12 調整：排除贈品、活動商品、週年慶活動"
 
   # === 活動管理表 (80) ===
   - id: REQ-023
@@ -256,11 +261,15 @@ rules:
     type: validation
     category: required
     field: start_date
-    description: "活動開始日期為必填"
+    description: "活動開始日期為必填（長期/常態活動除外）"
     tables: ["80"]
-    severity: high
+    severity: low
     enabled: true
     auto_fixable: false
+    exclude_condition:
+      field: campaign_name
+      patterns: ["補償", "試用", "試吃", "量販", "優惠", "老友", "新客", "買", "贈"]
+    note: "2026-01-12 調整：長期/常態活動、買贈活動不需要開始日期"
 
   # REQ-026 已移除：長期/無期限活動的 end_date 可為空 (2026-01-09)
 
@@ -303,11 +312,15 @@ rules:
     type: validation
     category: required
     field: unit_price
-    description: "訂單明細的單價為必填"
+    description: "訂單明細的單價為必填（贈品/活動商品除外）"
     tables: ["99"]
     severity: high
     enabled: true
     auto_fixable: false
+    exclude_condition:
+      field: product_name
+      patterns: ["贈品", "活動贈品", "活動"]
+    note: "2026-01-12 調整：排除贈品及活動商品"
 
   - id: REQ-031
     name: 訂單明細小計必填驗證

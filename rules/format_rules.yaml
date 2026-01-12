@@ -4,19 +4,20 @@
 # 注意：使用實際 BigQuery 欄位名稱 (英文)
 
 rules:
-  # FMT-001: 手機號碼格式
+  # FMT-001: 手機號碼格式 (放寬：行銷分析非關鍵欄位)
   - id: FMT-001
     name: 手機號碼格式驗證
     type: validation
     category: format
     field: mobile
-    pattern: "^09\\d{8}$"
-    description: "手機號碼須為 09 開頭的 10 碼數字"
+    pattern: "^0?9\\d{8}$"
+    description: "手機號碼須為 09 開頭的 10 碼數字（允許缺少前導0）"
     tables: ["20", "60"]
-    severity: medium
+    severity: low  # 降為低優先級，行銷分析非關鍵
     enabled: true
     auto_fixable: true
     fix_rule: FMT-001-FIX
+    note: "2026-01-12 放寬：允許 9xxxxxxxx 格式，自動補0"
 
   # FMT-002: 市話格式
   - id: FMT-002
@@ -46,19 +47,25 @@ rules:
     auto_fixable: true
     fix_rule: FMT-003-FIX
 
-  # FMT-004: 統一編號格式
+  # FMT-004: 統一編號/身份證/載具格式
   - id: FMT-004
     name: 統一編號格式驗證
     type: validation
     category: format
     field: tax_id
-    pattern: "^\\d{8}$"
-    description: "統一編號須為 8 碼數字"
+    pattern: "^(\\d{7,8}|[A-Z]\\d{9}|/[A-Z0-9+.-]{7,8})$"
+    description: "統一編號(7-8碼數字)、身份證(英文+9碼)、或載具條碼(/開頭)"
     tables: ["60"]
-    severity: high
+    severity: low
     enabled: true
     auto_fixable: true
     fix_rule: FMT-004-FIX
+    fix_action:
+      type: pad_left
+      target_length: 8
+      pad_char: "0"
+      condition: "^\\d{7}$"
+    note: "2026-01-12 調整：允許7碼統編(自動補0)、身份證、載具條碼格式"
 
   # FMT-005: 郵遞區號格式
   - id: FMT-005

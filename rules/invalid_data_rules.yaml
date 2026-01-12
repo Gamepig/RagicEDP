@@ -1,0 +1,130 @@
+# 無效資料識別規則 (INV-*)
+# Version: 1.0.0
+# Date: 2026-01-12
+# 用途：識別並標記應剔除或需人工處理的無效資料
+
+rules:
+  # === 完全無效資料（應剔除） ===
+  
+  - id: INV-001
+    name: 訂單編號為 Excel 錯誤值
+    type: invalid_data
+    category: data_quality
+    field: order_code
+    pattern: "^#N/A$"
+    description: "訂單編號為 Excel 公式錯誤 (#N/A)，無法回追"
+    tables: ["50", "99"]
+    severity: critical
+    action: exclude
+    note: "Excel 公式錯誤產生的資料，完全無效"
+
+  - id: INV-002
+    name: 主鍵欄位全空
+    type: invalid_data
+    category: data_quality
+    condition:
+      all_empty: ["order_code", "product_code"]
+    description: "訂單編號和商品編號同時為空，無法識別記錄"
+    tables: ["99"]
+    severity: critical
+    action: exclude
+    note: "缺少所有主鍵，完全無效"
+
+  - id: INV-003
+    name: 完全空白訂單明細
+    type: invalid_data
+    category: data_quality
+    condition:
+      all_empty: ["product_code", "product_name", "quantity"]
+    description: "商品編號、商品名稱、數量同時為空，無任何有效資訊"
+    tables: ["99"]
+    severity: critical
+    action: exclude
+    note: "2026-01-12 調整：完全空白記錄無行銷價值，應剔除"
+
+  # === 需標記資料（保留但標記） ===
+
+  - id: INV-010
+    name: 訂單明細缺少訂單編號
+    type: invalid_data
+    category: data_quality
+    field: order_code
+    condition:
+      is_empty: true
+      not_pattern: "^#N/A$"
+    description: "訂單明細的訂單編號為空（非 #N/A）"
+    tables: ["99"]
+    severity: high
+    action: mark
+    note: "可能是資料轉換問題，需人工補齊"
+
+  - id: INV-011
+    name: 統編欄位為非標準文字
+    type: invalid_data
+    category: data_quality
+    field: tax_id
+    pattern: "^(載具\\s|男|女|個人|公司|地址|住址)"
+    description: "統編欄位填入非統編內容"
+    tables: ["60"]
+    severity: low
+    action: mark
+    note: "誤填資料，不影響行銷分析"
+
+  - id: INV-012
+    name: 數量為零
+    type: invalid_data
+    category: data_quality
+    field: quantity
+    pattern: "^0$"
+    description: "訂單明細數量為 0，可能是取消或修改記錄"
+    tables: ["99"]
+    severity: low  # 2026-01-12 降級：有追蹤價值，標記保留
+    action: mark
+    mark_type: order_modification
+    note: "取消/修改記錄，保留追蹤但不計入銷售統計"
+
+  - id: INV-013
+    name: 非贈品商品無單價
+    type: invalid_data
+    category: data_quality
+    field: unit_price
+    condition:
+      is_empty: true
+      exclude_pattern:
+        field: product_name
+        patterns: ["贈品", "活動贈品", "活動"]
+    description: "非贈品商品的單價為空"
+    tables: ["99"]
+    severity: medium
+    action: mark
+    note: "需補齊商品定價"
+
+  - id: INV-014
+    name: 訂單無客戶編號
+    type: invalid_data
+    category: data_quality
+    field: customer_code
+    condition:
+      is_empty: true
+    description: "訂單缺少客戶編號且無法從電話匹配"
+    tables: ["50"]
+    severity: low  # 2026-01-12 降級：僅佔 0.04%，不影響整體分析
+    action: mark
+    mark_type: unknown_customer
+    note: "無法關聯客戶，但訂單金額仍有銷售統計價值"
+
+  - id: INV-015
+    name: 包材類商品無數量
+    type: invalid_data
+    category: data_quality
+    condition:
+      field_empty: quantity
+      field_pattern:
+        field: product_name
+        patterns: ["精裝盒", "禮盒", "包裝", "提袋"]
+    description: "包材類商品無數量，可能是贈送或組合包裝"
+    tables: ["99"]
+    severity: low
+    action: mark
+    mark_type: packaging_item
+    note: "包材類商品，無數量是合理的"
