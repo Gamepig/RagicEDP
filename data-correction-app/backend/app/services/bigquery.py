@@ -212,9 +212,10 @@ class BigQueryService:
         violations = []
         try:
             violations_query = f"""
-                SELECT rule_id, field_name, error_message, severity
+                SELECT rule_id, field_name, before_value, severity, status
                 FROM `{self.project_id}.{self.dataset}.violations`
                 WHERE table_code = @table_code AND record_id = @ragic_id
+                  AND (status IS NULL OR status != 'fixed')
             """
             v_config = bigquery.QueryJobConfig(
                 query_parameters=[
@@ -226,12 +227,15 @@ class BigQueryService:
             for v_row in v_result:
                 violations.append({
                     'rule_id': v_row.rule_id,
-                    'field_name': v_row.field_name,
-                    'error_message': v_row.error_message,
-                    'severity': v_row.severity,
+                    'field': v_row.field_name,
+                    'before': v_row.before_value,
+                    'severity': v_row.severity or 'medium',
+                    'rule_type': 'validation',
+                    'reason': f'違反規則 {v_row.rule_id}',
+                    'auto_fixable': False,
                 })
         except Exception as e:
-            logger.debug(f"查詢違規詳情失敗（可忽略）: {e}")
+            logger.warning(f"查詢違規詳情失敗: {e}")
 
         return {
             'record_id': record_id,
