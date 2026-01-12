@@ -3,7 +3,7 @@
 
 生成 Mermaid 圖表和統計資訊
 """
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 import logging
 import os
 import re
@@ -231,7 +231,7 @@ class StarSchemaGenerator:
 
     def generate_stats(self) -> Dict[str, Any]:
         """
-        生成統計資訊
+        生成統計資訊（使用 UNION ALL 優化為單一查詢）
 
         Returns:
             統計資訊字典
@@ -243,38 +243,51 @@ class StarSchemaGenerator:
             'total_tables': len(self.FACT_TABLES) + len(self.DIM_TABLES),
         }
 
-        # 查詢各表記錄數
+        # 初始化所有表格（預設 count=0）
         for fact_table in self.FACT_TABLES:
-            try:
-                count = self._get_table_count(fact_table)
-                stats['fact_tables'][fact_table] = {
-                    'name': self.FACT_FIELDS[fact_table]['name'],
-                    'count': count,
-                }
-                stats['total_records'] += count
-            except Exception as e:
-                logger.warning(f"查詢 {fact_table} 失敗: {e}")
-                stats['fact_tables'][fact_table] = {
-                    'name': self.FACT_FIELDS[fact_table]['name'],
-                    'count': 0,
-                    'error': str(e),
-                }
-
+            stats['fact_tables'][fact_table] = {
+                'name': self.FACT_FIELDS[fact_table]['name'],
+                'count': 0,
+            }
         for dim_table, info in self.DIM_TABLES.items():
-            try:
-                count = self._get_table_count(dim_table)
-                stats['dim_tables'][dim_table] = {
-                    'name': info['name'],
-                    'count': count,
-                }
+            stats['dim_tables'][dim_table] = {
+                'name': info['name'],
+                'count': 0,
+            }
+
+        # 使用 UNION ALL 合併所有表格的 COUNT 查詢
+        union_queries = []
+        all_tables = list(self.FACT_TABLES) + list(self.DIM_TABLES.keys())
+
+        for table_name in all_tables:
+            validated_table = _validate_identifier(table_name, "table_name")
+            union_queries.append(f"""
+                SELECT '{validated_table}' as table_name, COUNT(*) as count
+                FROM `{self.project_id}.{self.dataset}.{validated_table}`
+            """)
+
+        try:
+            query = " UNION ALL ".join(union_queries)
+            result = self.client.query(query).result()
+
+            for row in result:
+                table_name = row.table_name
+                count = row.count
+
+                if table_name in self.FACT_TABLES:
+                    stats['fact_tables'][table_name]['count'] = count
+                else:
+                    stats['dim_tables'][table_name]['count'] = count
+
                 stats['total_records'] += count
-            except Exception as e:
-                logger.warning(f"查詢 {dim_table} 失敗: {e}")
-                stats['dim_tables'][dim_table] = {
-                    'name': info['name'],
-                    'count': 0,
-                    'error': str(e),
-                }
+
+        except Exception as e:
+            logger.warning(f"統計查詢失敗: {e}")
+            # 標記所有表格的錯誤
+            for fact_table in self.FACT_TABLES:
+                stats['fact_tables'][fact_table]['error'] = str(e)
+            for dim_table in self.DIM_TABLES:
+                stats['dim_tables'][dim_table]['error'] = str(e)
 
         return stats
 
