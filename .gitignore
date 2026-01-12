@@ -85,7 +85,6 @@ Thumbs.db
 # =============================================
 # 根目錄不需要的檔案
 # =============================================
-/main.py
 test_backup.py
 PROJECT_OVERVIEW.md
 DEPLOYMENT_CHECKLIST.md

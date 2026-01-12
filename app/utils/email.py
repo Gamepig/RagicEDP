@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from ..config import EMAIL_CONFIG
+from app.backup.config import EMAIL_CONFIG
 
 logger = logging.getLogger(__name__)
 
