@@ -317,6 +317,10 @@ class DerivedCalculator:
     ) -> list[FillResult]:
         """Calculate using a generic SQL formula.
 
+        Supports two modes:
+        1. Direct column reference: formula uses column names directly (e.g., "quantity * unit_price")
+        2. JSON field reference: formula uses $field syntax (e.g., "$數量 * $單價")
+
         Args:
             rule: Rule configuration
             table_code: Table code
@@ -332,17 +336,29 @@ class DerivedCalculator:
         target_field = rule.field
         bq_table = rule.get_bq_table_name(table_code)
 
-        # Build SELECT clause for inputs
-        input_selects = ", ".join(
-            [f"JSON_VALUE(data, '$.{f}') as {f.replace(' ', '_')}" for f in inputs]
-        )
+        # Check if formula uses $field syntax (JSON mode) or direct column reference
+        uses_json_syntax = "$" in formula
 
-        # Replace field references in formula with JSON_VALUE
-        sql_formula = formula
-        for field in inputs:
-            sql_formula = sql_formula.replace(
-                f"${field}", f"JSON_VALUE(data, '$.{field}')"
+        if uses_json_syntax:
+            # JSON mode: build SELECT clause for JSON inputs
+            input_selects = ", ".join(
+                [f"JSON_VALUE(data, '$.{f}') as {f.replace(' ', '_')}" for f in inputs]
             )
+            # Replace field references in formula with JSON_VALUE
+            sql_formula = formula
+            for field in inputs:
+                sql_formula = sql_formula.replace(
+                    f"${field}", f"JSON_VALUE(data, '$.{field}')"
+                )
+            where_clause = f"JSON_VALUE(data, '$.{target_field}') IS NULL"
+        else:
+            # Direct column mode: use columns directly
+            input_selects = ", ".join(inputs)
+            sql_formula = formula
+            where_clause = f"{target_field} IS NULL"
+            # Add NOT NULL checks for input columns
+            for inp in inputs:
+                where_clause += f" AND {inp} IS NOT NULL"
 
         query = f"""
         SELECT
@@ -350,7 +366,7 @@ class DerivedCalculator:
             {input_selects},
             ({sql_formula}) as calculated_value
         FROM `{self.bq_client.dataset}.{bq_table}`
-        WHERE JSON_VALUE(data, '$.{target_field}') IS NULL
+        WHERE {where_clause}
         """
         if limit:
             query += f" LIMIT {limit}"

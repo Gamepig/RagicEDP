@@ -1,14 +1,14 @@
 # 自動補足規則配置
-# 版本: v1.1
+# 版本: v1.5
 # 建立日期: 2026-01-11
-# 更新日期: 2026-01-11 (tables 改為字串陣列)
+# 更新日期: 2026-01-12 (新增 FILL-PROD-001 贈品價格補足)
 # 說明: 從現有資料自動補足缺失欄位
 
 metadata:
-  version: "1.0"
+  version: "1.5"
   created: "2026-01-11"
-  description: "自動補足規則 - 客戶統計、訂單關聯、衍生欄位"
-  total_rules: 20
+  description: "自動補足規則 - 客戶統計、商品、活動、訂單關聯、衍生欄位"
+  total_rules: 24
 
 # ============================================================
 # 第一部分: 客戶統計補足規則 (FILL-CUST)
@@ -190,7 +190,109 @@ rules:
     refresh: daily
 
 # ============================================================
-# 第二部分: 訂單明細關聯補足規則 (FILL-OD)
+# 第二部分: 商品表補足規則 (FILL-PROD)
+# 補足商品表欄位
+# ============================================================
+
+  # ---------------------------------------------------------
+  # FILL-PROD-001: 贈品價格補足
+  # ---------------------------------------------------------
+  - id: FILL-PROD-001
+    name: 贈品價格補足
+    type: auto_fill
+    category: product_fill
+    tables: ["70"]
+    target_field: price
+    target_field_id: null
+    trigger:
+      condition: "price IS NULL AND (商品名稱 LIKE '%贈品%' OR 商品名稱 LIKE '%活動%')"
+    source:
+      type: constant
+      value: 0
+      description: "贈品/活動商品價格設為 0"
+    fill_logic:
+      type: sql_update
+      query: |
+        UPDATE `{project}.{dataset}.sheet_70_product`
+        SET price = 0
+        WHERE price IS NULL
+          AND (JSON_VALUE(data, '$.商品名稱') LIKE '%贈品%'
+               OR JSON_VALUE(data, '$.商品名稱') LIKE '%活動%')
+    affected_count: 7
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    note: "贈品或活動商品沒有售價，填充為 0"
+
+# ============================================================
+# 第三部分: 活動管理表補足規則 (FILL-CAMP)
+# 補足活動管理表欄位
+# ============================================================
+
+  # ---------------------------------------------------------
+  # FILL-CAMP-001: 活動開始日期補足
+  # ---------------------------------------------------------
+  - id: FILL-CAMP-001
+    name: 活動開始日期補足
+    type: auto_fill
+    category: campaign_fill
+    tables: ["80"]
+    target_field: start_date
+    target_field_id: null
+    trigger:
+      condition: "start_date IS NULL"
+    source:
+      type: json_extract
+      field: 建檔日期
+      description: "使用建檔日期作為活動開始日期的預設值"
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT SAFE.PARSE_DATE('%Y/%m/%d', SUBSTR(JSON_VALUE(data, '$.建檔日期'), 1, 10)) as start_date
+        FROM `{project}.{dataset}.sheet_80_campaign`
+        WHERE ragic_id = @ragic_id
+    affected_count: 8
+    auto_fixable: true
+    priority: P2
+    severity: medium
+    note: "常態性活動若無明確開始日期，使用建檔日期作為預設值"
+
+# ============================================================
+# 第三部分: 訂單表補足規則 (FILL-ORD)
+# 從訂單明細表反查補足訂單表欄位
+# ============================================================
+
+  # ---------------------------------------------------------
+  # FILL-ORD-001: 訂單表客戶編號補足
+  # ---------------------------------------------------------
+  - id: FILL-ORD-001
+    name: 訂單表客戶編號補足
+    type: lookup_fill
+    category: order_fill
+    tables: ["50"]
+    target_field: 客戶編號
+    target_field_id: null
+    source_table: 99
+    source_table_name: sheet_99_order_detail
+    lookup_key: 訂單編號
+    source_field: 客戶編號
+    trigger:
+      condition: "客戶編號 IS NULL AND 訂單編號 IS NOT NULL"
+    fill_logic:
+      type: sql_query
+      query: |
+        SELECT DISTINCT JSON_VALUE(data, '$.客戶編號') as customer_code
+        FROM `{project}.{dataset}.sheet_99_order_detail`
+        WHERE JSON_VALUE(data, '$.訂單編號') = @order_id
+        LIMIT 1
+    affected_count: 1
+    auto_fixable: true
+    priority: P1
+    severity: high
+    note: "從訂單明細表反查客戶編號"
+
+# ============================================================
+# 第三部分: 訂單明細關聯補足規則 (FILL-OD)
 # 從關聯表補足訂單明細表欄位
 # ============================================================
 
@@ -332,6 +434,28 @@ rules:
     auto_fixable: partial  # 部分需 AI
     priority: P2
     severity: medium
+
+  # ---------------------------------------------------------
+  # FILL-OD-007: 小計自動計算
+  # ---------------------------------------------------------
+  - id: FILL-OD-007
+    name: 小計自動計算
+    type: auto_fill
+    category: order_lookup
+    tables: ["99"]
+    target_field: subtotal
+    target_field_id: null
+    trigger:
+      condition: "subtotal IS NULL AND quantity IS NOT NULL AND unit_price IS NOT NULL"
+    source:
+      type: compute
+      formula: "quantity * unit_price"
+      inputs: ["quantity", "unit_price"]
+    affected_count: 175815
+    auto_fixable: true
+    priority: P1
+    severity: high
+    note: "小計 = 數量 × 單價，不影響現有 View（View 使用 JSON_VALUE）"
 
 # ============================================================
 # 第三部分: 衍生欄位自動計算規則 (FILL-DERIVED)
@@ -530,9 +654,9 @@ execution:
   phases:
     phase_1:
       name: 關聯表補足
-      rules: [FILL-OD-001, FILL-OD-002, FILL-OD-003, FILL-OD-004]
+      rules: [FILL-OD-001, FILL-OD-002, FILL-OD-003, FILL-OD-004, FILL-OD-007]
       parallel: true
-      description: "從關聯表補足基礎資料"
+      description: "從關聯表補足基礎資料與計算欄位"
 
     phase_2:
       name: 客戶統計計算
@@ -565,7 +689,7 @@ execution:
   # 排程
   schedule:
     on_insert:
-      rules: [FILL-OD-001, FILL-OD-002, FILL-OD-003, FILL-OD-004,
+      rules: [FILL-OD-001, FILL-OD-002, FILL-OD-003, FILL-OD-004, FILL-OD-007,
               FILL-DERIVED-001, FILL-DERIVED-002, FILL-DERIVED-003,
               FILL-DERIVED-004, FILL-DERIVED-005]
       description: "新資料進入時執行"
@@ -586,15 +710,21 @@ execution:
 # ============================================================
 
 summary:
-  total_rules: 20
+  total_rules: 24
   by_category:
     customer_stats: 7
-    order_lookup: 6
+    product_fill: 1  # 新增 FILL-PROD-001 贈品價格補足
+    campaign_fill: 1  # FILL-CAMP-001 活動開始日期補足
+    order_fill: 1  # FILL-ORD-001 訂單表客戶編號補足
+    order_lookup: 7  # 含 FILL-OD-007 小計計算
     derived: 7
   by_auto_fixable:
-    fully_auto: 19
+    fully_auto: 23  # 新增 FILL-PROD-001
     partial_auto: 1  # FILL-OD-006 需 AI
   affected_records:
     customer_table: 40027
-    order_detail_lookup: ~3700
+    product_table: 7  # 贈品價格補足
+    campaign_table: 8  # 活動開始日期補足
+    order_table: 1  # 客戶編號補足
+    order_detail_lookup: ~179500  # 含 subtotal 175,815 筆
     derived_fields: all_records
