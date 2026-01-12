@@ -12,6 +12,36 @@ from typing import Any
 import yaml
 from loguru import logger
 
+# 內建預設配置（Cloud Function 環境使用）
+DEFAULT_CONFIG = {
+    "sheets": {
+        "10": {"code": "10", "bq_table": "sheet_10_brand", "ragic_path": "forms8/5", "chinese_name": "品牌表"},
+        "20": {"code": "20", "bq_table": "sheet_20_channel", "ragic_path": "forms8/4", "chinese_name": "通路表"},
+        "30": {"code": "30", "bq_table": "sheet_30_payment", "ragic_path": "forms8/7", "chinese_name": "金流表"},
+        "40": {"code": "40", "bq_table": "sheet_40_logistics", "ragic_path": "forms8/1", "chinese_name": "物流表"},
+        "41": {"code": "41", "bq_table": "sheet_41_zipcode", "ragic_path": "forms8/6", "chinese_name": "郵遞區號表"},
+        "50": {"code": "50", "bq_table": "sheet_50_order", "ragic_path": "forms8/17", "chinese_name": "訂單表"},
+        "60": {"code": "60", "bq_table": "sheet_60_customer", "ragic_path": "forms8/2", "chinese_name": "客戶表"},
+        "70": {"code": "70", "bq_table": "sheet_70_product", "ragic_path": "forms8/9", "chinese_name": "商品表"},
+        "80": {"code": "80", "bq_table": "sheet_80_campaign", "ragic_path": "forms8/10", "chinese_name": "活動管理表"},
+        "99": {"code": "99", "bq_table": "sheet_99_order_detail", "ragic_path": "forms8/3", "chinese_name": "訂單明細表"},
+    },
+    "env_vars": {
+        "GCP_PROJECT_ID": {"correct_name": "GCP_PROJECT_ID", "default_value": "b25h01-ragic"},
+        "BQ_DATASET": {"correct_name": "BQ_DATASET", "default_value": "erp_backup"},
+    },
+    "cleaning_status": {
+        "valid_values": [None, "pending", "processing", "completed", "auto_fixed", "ai_fixed", "manual", "failed"]
+    },
+    "ai_models": {
+        "openrouter": {
+            "primary_model": "meta-llama/llama-3.3-70b-instruct:free",
+            "fallback_model": "meta-llama/llama-3.2-3b-instruct:free",
+            "confidence_threshold": 0.9,
+        }
+    },
+}
+
 
 class SymbolConfig:
     """Load and provide access to symbol configuration."""
@@ -22,6 +52,9 @@ class SymbolConfig:
         Args:
             config_path: Path to index.yaml. Defaults to .claude/symbols/index.yaml
         """
+        self._config: dict[str, Any] = {}
+        self.config_path: Path | None = None
+
         if config_path is None:
             # Find project root by looking for .claude directory
             current = Path(__file__).resolve()
@@ -31,10 +64,12 @@ class SymbolConfig:
                     break
 
         if config_path is None:
-            raise FileNotFoundError("Symbol index file not found")
+            # Cloud Function 環境：使用內建預設配置
+            logger.info("Using built-in default config (Cloud Function environment)")
+            self._config = DEFAULT_CONFIG.copy()
+            return
 
         self.config_path = Path(config_path)
-        self._config: dict[str, Any] = {}
         self._load_config()
 
     def _load_config(self) -> None:

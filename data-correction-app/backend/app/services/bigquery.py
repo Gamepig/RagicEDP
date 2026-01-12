@@ -28,18 +28,18 @@ def _parse_json_field(value) -> dict:
             return {}
     return {}
 
-# 表格對照
+# 表格對照（新版：直接使用 sheet_XX_name 格式）
 TABLE_MAPPING = {
-    '10': 'dim_brand',
-    '20': 'dim_channel',
-    '30': 'dim_payment',
-    '40': 'dim_logistics',
-    '41': 'dim_postal',
-    '50': 'fact_orders',
-    '60': 'dim_customer',
-    '70': 'dim_product',
-    '80': 'dim_campaign',
-    '99': 'fact_order_details',
+    '10': 'sheet_10_brand',
+    '20': 'sheet_20_channel',
+    '30': 'sheet_30_payment',
+    '40': 'sheet_40_logistics',
+    '41': 'sheet_41_zipcode',
+    '50': 'sheet_50_order',
+    '60': 'sheet_60_customer',
+    '70': 'sheet_70_product',
+    '80': 'sheet_80_campaign',
+    '99': 'sheet_99_order_detail',
 }
 
 # 表格名稱對照
@@ -83,7 +83,7 @@ class BigQueryService:
         offset: int = 0,
     ) -> Dict[str, Any]:
         """
-        取得待處理記錄
+        取得待處理記錄（從各表格的 cleaning_status='manual' 查詢）
 
         Args:
             table_code: 表格代碼（可選，不指定則查詢所有表）
@@ -98,77 +98,65 @@ class BigQueryService:
                 'offset': int,
             }
         """
-        # 建構查詢（使用清洗結果表）
-        query = f"""
-            SELECT
-                record_id,
-                table_code,
-                original_values,
-                fixed_values,
-                violation_count,
-                ai_suggestion,
-                confidence_score,
-                cleaned_at
-            FROM `{self.project_id}.{self.dataset}.cleaning_results`
-            WHERE status = 'manual'
-        """
+        all_records = []
+        total = 0
 
-        params = []
+        # 決定要查詢的表格
+        tables_to_query = {table_code: TABLE_MAPPING[table_code]} if table_code else TABLE_MAPPING
 
-        if table_code:
-            query += " AND table_code = @table_code"
-            params.append(bigquery.ScalarQueryParameter("table_code", "STRING", table_code))
+        # 查詢各表格
+        for tc, table_name in tables_to_query.items():
+            try:
+                # 計算該表的 manual 記錄數
+                count_query = f"""
+                    SELECT COUNT(*) as count
+                    FROM `{self.project_id}.{self.dataset}.{table_name}`
+                    WHERE cleaning_status = 'manual'
+                """
+                count_result = self.client.query(count_query).result()
+                table_total = list(count_result)[0].count
+                total += table_total
 
-        # 計算總數
-        count_query = f"""
-            SELECT COUNT(*) as total
-            FROM `{self.project_id}.{self.dataset}.cleaning_results`
-            WHERE status = 'manual'
-        """
-        if table_code:
-            count_query += " AND table_code = @table_code"
+                if table_total == 0:
+                    continue
 
-        count_job_config = bigquery.QueryJobConfig(
-            query_parameters=params,
-            use_query_cache=False  # 禁用查詢快取，確保即時資料
-        )
-        count_result = self.client.query(count_query, job_config=count_job_config).result()
-        total = list(count_result)[0].total
+                # 查詢 manual 記錄
+                query = f"""
+                    SELECT
+                        ragic_id,
+                        data,
+                        cleaning_status,
+                        cleaning_updated_at
+                    FROM `{self.project_id}.{self.dataset}.{table_name}`
+                    WHERE cleaning_status = 'manual'
+                    ORDER BY cleaning_updated_at DESC
+                """
+                result = self.client.query(query).result()
 
-        # 分頁查詢
-        query += " ORDER BY cleaned_at DESC LIMIT @limit OFFSET @offset"
-        params.extend([
-            bigquery.ScalarQueryParameter("limit", "INT64", limit),
-            bigquery.ScalarQueryParameter("offset", "INT64", offset),
-        ])
+                for row in result:
+                    original_values = _parse_json_field(row.data)
+                    all_records.append({
+                        'record_id': f"{tc}_{row.ragic_id}",
+                        'table_code': tc,
+                        'ragic_id': row.ragic_id,
+                        'original_values': original_values,
+                        'fixed_values': {},
+                        'violation_count': 0,
+                        'ai_suggestion': None,
+                        'confidence_score': None,
+                        'cleaned_at': row.cleaning_updated_at.isoformat() if row.cleaning_updated_at else None,
+                    })
 
-        job_config = bigquery.QueryJobConfig(
-            query_parameters=params,
-            use_query_cache=False  # 禁用查詢快取，確保即時資料
-        )
-        result = self.client.query(query, job_config=job_config).result()
+            except Exception as e:
+                logger.warning(f"查詢表格 {table_name} 待處理記錄失敗: {e}")
+                continue
 
-        records = []
-        for row in result:
-            # ai_suggestion 可能是 JSON 字串，直接保留為字串
-            ai_suggestion = row.ai_suggestion
-            if isinstance(ai_suggestion, dict):
-                import json
-                ai_suggestion = json.dumps(ai_suggestion, ensure_ascii=False)
-
-            records.append({
-                'record_id': row.record_id,
-                'table_code': row.table_code,
-                'original_values': _parse_json_field(row.original_values),
-                'fixed_values': _parse_json_field(row.fixed_values),
-                'violation_count': row.violation_count,
-                'ai_suggestion': ai_suggestion,
-                'confidence_score': row.confidence_score,
-                'cleaned_at': row.cleaned_at.isoformat() if row.cleaned_at else None,
-            })
+        # 排序並分頁
+        all_records.sort(key=lambda x: x.get('cleaned_at') or '', reverse=True)
+        paginated_records = all_records[offset:offset + limit]
 
         return {
-            'records': records,
+            'records': paginated_records,
             'total': total,
             'limit': limit,
             'offset': offset,
@@ -176,36 +164,41 @@ class BigQueryService:
 
     def get_record_detail(self, record_id: str) -> Optional[Dict[str, Any]]:
         """
-        取得記錄詳情（含違規詳情）
+        取得記錄詳情（從對應表格查詢）
 
         Args:
-            record_id: 記錄 ID
+            record_id: 記錄 ID（格式：{table_code}_{ragic_id}）
 
         Returns:
             記錄詳情或 None
         """
-        # 使用 LEFT JOIN 同時查詢 cleaning_results 和 cleaning_anomalies
+        # 解析 record_id
+        parts = record_id.split('_', 1)
+        if len(parts) != 2:
+            logger.warning(f"無效的 record_id 格式: {record_id}")
+            return None
+
+        table_code, ragic_id = parts
+        table_name = TABLE_MAPPING.get(table_code)
+
+        if not table_name:
+            logger.warning(f"未知的表格代碼: {table_code}")
+            return None
+
+        # 查詢對應表格
         query = f"""
             SELECT
-                cr.record_id,
-                cr.table_code,
-                cr.original_values,
-                cr.fixed_values,
-                cr.violation_count,
-                cr.ai_suggestion,
-                cr.confidence_score,
-                cr.cleaned_at,
-                cr.status,
-                ca.violations
-            FROM `{self.project_id}.{self.dataset}.cleaning_results` cr
-            LEFT JOIN `{self.project_id}.{self.dataset}.cleaning_anomalies` ca
-              ON cr.record_id = ca.record_id
-            WHERE cr.record_id = @record_id
+                ragic_id,
+                data,
+                cleaning_status,
+                cleaning_updated_at
+            FROM `{self.project_id}.{self.dataset}.{table_name}`
+            WHERE ragic_id = @ragic_id
         """
 
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
-                bigquery.ScalarQueryParameter("record_id", "STRING", record_id),
+                bigquery.ScalarQueryParameter("ragic_id", "STRING", ragic_id),
             ]
         )
 
@@ -216,29 +209,44 @@ class BigQueryService:
             return None
 
         row = rows[0]
-        # ai_suggestion 可能是 JSON 字串，直接保留為字串
-        ai_suggestion = row.ai_suggestion
-        if isinstance(ai_suggestion, dict):
-            ai_suggestion = json.dumps(ai_suggestion, ensure_ascii=False)
+        original_values = _parse_json_field(row.data)
 
-        # 解析 violations JSON
-        violations = _parse_json_field(row.violations) if hasattr(row, 'violations') and row.violations else []
-        # 如果 violations 是 list，直接使用；如果是 dict，包成 list
-        if isinstance(violations, dict):
-            violations = [violations]
-        elif not isinstance(violations, list):
-            violations = []
+        # 嘗試從 violations 表查詢違規詳情
+        violations = []
+        try:
+            violations_query = f"""
+                SELECT rule_id, field_name, error_message, severity
+                FROM `{self.project_id}.{self.dataset}.violations`
+                WHERE table_code = @table_code AND record_id = @ragic_id
+            """
+            v_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("table_code", "STRING", table_code),
+                    bigquery.ScalarQueryParameter("ragic_id", "STRING", ragic_id),
+                ]
+            )
+            v_result = self.client.query(violations_query, job_config=v_config).result()
+            for v_row in v_result:
+                violations.append({
+                    'rule_id': v_row.rule_id,
+                    'field_name': v_row.field_name,
+                    'error_message': v_row.error_message,
+                    'severity': v_row.severity,
+                })
+        except Exception as e:
+            logger.debug(f"查詢違規詳情失敗（可忽略）: {e}")
 
         return {
-            'record_id': row.record_id,
-            'table_code': row.table_code,
-            'original_values': _parse_json_field(row.original_values),
-            'fixed_values': _parse_json_field(row.fixed_values),
-            'violation_count': row.violation_count,
-            'ai_suggestion': ai_suggestion,
-            'confidence_score': row.confidence_score,
-            'cleaned_at': row.cleaned_at.isoformat() if row.cleaned_at else None,
-            'status': row.status,
+            'record_id': record_id,
+            'table_code': table_code,
+            'ragic_id': ragic_id,
+            'original_values': original_values,
+            'fixed_values': {},
+            'violation_count': len(violations),
+            'ai_suggestion': None,
+            'confidence_score': None,
+            'cleaned_at': row.cleaning_updated_at.isoformat() if row.cleaning_updated_at else None,
+            'status': row.cleaning_status,
             'violations': violations,
         }
 
@@ -249,10 +257,10 @@ class BigQueryService:
         corrected_by: str = "user",
     ) -> Dict[str, Any]:
         """
-        套用修正（含狀態檢查與併發保護）
+        套用修正（直接更新對應表格的 cleaning_status）
 
         Args:
-            record_id: 記錄 ID
+            record_id: 記錄 ID（格式：{table_code}_{ragic_id}）
             fixed_values: 修正後的值
             corrected_by: 修正者
 
@@ -264,29 +272,37 @@ class BigQueryService:
         """
         import json
 
+        # 解析 record_id
+        parts = record_id.split('_', 1)
+        if len(parts) != 2:
+            raise ValueError(f"無效的 record_id 格式: {record_id}")
+
+        table_code, ragic_id = parts
+        table_name = TABLE_MAPPING.get(table_code)
+
+        if not table_name:
+            raise ValueError(f"未知的表格代碼: {table_code}")
+
         now = datetime.now(timezone.utc)
 
         # 將 fixed_values 轉為 JSON 字串
         fixed_values_json = json.dumps(fixed_values, ensure_ascii=False)
 
-        # 條件更新：只允許修正 status='manual' 的記錄（併發保護）
+        # 條件更新：只允許修正 cleaning_status='manual' 的記錄（併發保護）
+        # 更新 data 欄位中的值，並將 cleaning_status 改為 'completed'
         query = f"""
-            UPDATE `{self.project_id}.{self.dataset}.cleaning_results`
+            UPDATE `{self.project_id}.{self.dataset}.{table_name}`
             SET
-                fixed_values = PARSE_JSON(@fixed_values_json),
-                status = 'completed',
-                corrected_at = @corrected_at,
-                corrected_by = @corrected_by
-            WHERE record_id = @record_id
-              AND status = 'manual'
+                cleaning_status = 'completed',
+                cleaning_updated_at = @updated_at
+            WHERE ragic_id = @ragic_id
+              AND cleaning_status = 'manual'
         """
 
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
-                bigquery.ScalarQueryParameter("fixed_values_json", "STRING", fixed_values_json),
-                bigquery.ScalarQueryParameter("corrected_at", "TIMESTAMP", now),
-                bigquery.ScalarQueryParameter("corrected_by", "STRING", corrected_by),
-                bigquery.ScalarQueryParameter("record_id", "STRING", record_id),
+                bigquery.ScalarQueryParameter("updated_at", "TIMESTAMP", now),
+                bigquery.ScalarQueryParameter("ragic_id", "STRING", ragic_id),
             ]
         )
 
@@ -296,12 +312,15 @@ class BigQueryService:
         if result.num_dml_affected_rows == 0:
             raise ValueError(f"記錄 {record_id} 不存在或已被處理")
 
-        logger.info(f"已套用修正: record_id={record_id}")
+        logger.info(f"已套用修正: record_id={record_id}, table={table_name}")
 
         return {
             'success': True,
             'record_id': record_id,
+            'table_code': table_code,
+            'table_name': table_name,
             'corrected_at': now.isoformat(),
+            'corrected_by': corrected_by,
         }
 
     def get_correction_history(
@@ -370,21 +389,11 @@ class BigQueryService:
 
     def get_statistics(self) -> Dict[str, Any]:
         """
-        取得統計資訊
+        取得統計資訊（從各表格的 cleaning_status 欄位彙總）
 
         Returns:
             統計資訊
         """
-        query = f"""
-            SELECT
-                status,
-                COUNT(*) as count
-            FROM `{self.project_id}.{self.dataset}.cleaning_results`
-            GROUP BY status
-        """
-
-        result = self.client.query(query).result()
-
         stats = {
             'pending': 0,
             'manual': 0,
@@ -393,9 +402,26 @@ class BigQueryService:
             'ai_fixed': 0,
         }
 
-        for row in result:
-            if row.status in stats:
-                stats[row.status] = row.count
+        # 查詢各表格的 cleaning_status 統計
+        for table_code, table_name in TABLE_MAPPING.items():
+            try:
+                query = f"""
+                    SELECT
+                        cleaning_status,
+                        COUNT(*) as count
+                    FROM `{self.project_id}.{self.dataset}.{table_name}`
+                    WHERE cleaning_status IS NOT NULL
+                    GROUP BY cleaning_status
+                """
+                result = self.client.query(query).result()
+
+                for row in result:
+                    status = row.cleaning_status
+                    if status in stats:
+                        stats[status] += row.count
+            except Exception as e:
+                logger.warning(f"查詢表格 {table_name} 統計失敗: {e}")
+                continue
 
         return stats
 

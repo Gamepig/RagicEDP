@@ -327,11 +327,15 @@ rules:
     type: validation
     category: required
     field: subtotal
-    description: "訂單明細的小計為必填"
+    description: "訂單明細的小計為必填（贈品/活動/試吃商品除外）"
     tables: ["99"]
     severity: high
     enabled: true
     auto_fixable: false
+    exclude_condition:
+      field: product_name
+      patterns: ["滿額贈", "贈", "試吃", "體驗", "惜福", "活動"]
+    note: "2026-01-13 調整：排除贈品、滿額贈、試吃、體驗、惜福品等免費商品"
 
   # REQ-032 已移除：訂單明細的品牌編號由 View (view_customer_brand) 處理
   # 與 REQ-021 (商品表 brand_code) 決策一致

@@ -11,7 +11,6 @@ import os
 from datetime import datetime, date, timezone, timedelta
 import functions_framework
 from flask import Request
-from google.cloud import bigquery
 
 # 台北時區 (UTC+8)
 TAIPEI_TZ = timezone(timedelta(hours=8))
@@ -146,6 +145,7 @@ def _execute_cleaning(backup_date: date, send_notification: bool = True) -> dict
     logger.info("=" * 60)
 
     try:
+        # 驗證環境變數
         project_id = os.getenv('GCP_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT')
         dataset = os.getenv('BQ_DATASET')
 
@@ -154,21 +154,30 @@ def _execute_cleaning(backup_date: date, send_notification: bool = True) -> dict
         if not dataset:
             raise ValueError("BQ_DATASET 環境變數未設定")
 
-        bq_client = bigquery.Client(project=project_id)
+        # 設定通知開關（環境變數供 CleaningEngine 讀取）
+        os.environ['ENABLE_NOTIFICATIONS'] = 'true' if send_notification else 'false'
 
+        # 使用新版 CleaningEngine（自動從環境變數讀取配置）
         from app.cleaning.engine import CleaningEngine
-        engine = CleaningEngine(
-            bq_client=bq_client,
-            project_id=project_id,
-            dataset=dataset,
-            rules_dir='rules',
-            enable_notification=send_notification,
-        )
+        engine = CleaningEngine()
 
-        result = engine.run_daily_cleaning(
-            backup_date=backup_date,
-            send_notification=send_notification,
-        )
+        # 執行清洗（4 階段：SQL Validation → Auto-fix → Auto-fill → AI Analysis）
+        batch = engine.run(table_codes=None, trigger_type="scheduled")
+
+        # 轉換為 dict 格式
+        result = {
+            'status': batch.status,
+            'batch_id': batch.id,
+            'date': str(backup_date),
+            'total_processed': batch.processed_records,
+            'auto_fixed': batch.auto_fixed_count,
+            'ai_fixed': batch.ai_fixed_count,
+            'manual_required': batch.manual_count,
+            'duration_seconds': (batch.completed_at - batch.started_at).total_seconds() if batch.completed_at else 0,
+        }
+
+        if batch.error_message:
+            result['error'] = batch.error_message
 
         _log_cleaning_summary(result)
         return result
@@ -210,12 +219,15 @@ def clean_erp_data(request: Request):
         else:
             backup_date = get_taipei_today()
 
+        # 解析表格代碼
+        table_codes = request_json.get('table_codes')
         send_notification = request_json.get('send_notification', True)
 
         logger.info(f"Cleaning date: {backup_date}")
+        logger.info(f"Table codes: {table_codes or 'all'}")
         logger.info(f"Send notification: {send_notification}")
 
-        # 必須明確設定環境變數，不使用硬編預設值
+        # 驗證環境變數
         project_id = os.getenv('GCP_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT')
         dataset = os.getenv('BQ_DATASET')
 
@@ -224,23 +236,30 @@ def clean_erp_data(request: Request):
         if not dataset:
             raise ValueError("BQ_DATASET 環境變數未設定")
 
-        bq_client = bigquery.Client(project=project_id)
+        # 設定環境變數供 CleaningEngine 讀取
+        os.environ['ENABLE_NOTIFICATIONS'] = 'true' if send_notification else 'false'
 
-        # 初始化清洗引擎
+        # 使用新版 CleaningEngine（自動從環境變數讀取配置）
         from app.cleaning.engine import CleaningEngine
-        engine = CleaningEngine(
-            bq_client=bq_client,
-            project_id=project_id,
-            dataset=dataset,
-            rules_dir='rules',
-            enable_notification=send_notification,
-        )
+        engine = CleaningEngine()
 
-        # 執行清洗
-        result = engine.run_daily_cleaning(
-            backup_date=backup_date,
-            send_notification=send_notification,
-        )
+        # 執行清洗（4 階段：SQL Validation → Auto-fix → Auto-fill → AI Analysis）
+        batch = engine.run(table_codes=table_codes, trigger_type="http")
+
+        # 轉換為 dict 格式
+        result = {
+            'status': batch.status,
+            'batch_id': batch.id,
+            'date': str(backup_date),
+            'total_processed': batch.processed_records,
+            'auto_fixed': batch.auto_fixed_count,
+            'ai_fixed': batch.ai_fixed_count,
+            'manual_required': batch.manual_count,
+            'duration_seconds': (batch.completed_at - batch.started_at).total_seconds() if batch.completed_at else 0,
+        }
+
+        if batch.error_message:
+            result['error'] = batch.error_message
 
         # 記錄結果摘要
         _log_cleaning_summary(result)

@@ -24,11 +24,12 @@ class PendingRecord(BaseModel):
     """待處理記錄"""
     record_id: str
     table_code: str
+    ragic_id: Optional[str] = None
     original_values: Optional[Dict[str, Any]] = None
     fixed_values: Optional[Dict[str, Any]] = None
     violation_count: int = 0
     ai_suggestion: Optional[str] = None
-    confidence_score: float = 0
+    confidence_score: Optional[float] = None
     cleaned_at: Optional[str] = None
 
 
