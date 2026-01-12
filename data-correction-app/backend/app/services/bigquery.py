@@ -98,65 +98,68 @@ class BigQueryService:
                 'offset': int,
             }
         """
-        all_records = []
-        total = 0
-
         # 決定要查詢的表格
         tables_to_query = {table_code: TABLE_MAPPING[table_code]} if table_code else TABLE_MAPPING
 
-        # 查詢各表格
+        # 使用 UNION ALL 合併查詢（單一查詢優化效能）
+        union_queries = []
         for tc, table_name in tables_to_query.items():
-            try:
-                # 計算該表的 manual 記錄數
-                count_query = f"""
-                    SELECT COUNT(*) as count
-                    FROM `{self.project_id}.{self.dataset}.{table_name}`
-                    WHERE cleaning_status = 'manual'
-                """
-                count_result = self.client.query(count_query).result()
-                table_total = list(count_result)[0].count
-                total += table_total
+            union_queries.append(f"""
+                SELECT
+                    '{tc}' as table_code,
+                    ragic_id,
+                    data,
+                    cleaning_status,
+                    cleaning_updated_at
+                FROM `{self.project_id}.{self.dataset}.{table_name}`
+                WHERE cleaning_status = 'manual'
+            """)
 
-                if table_total == 0:
-                    continue
+        if not union_queries:
+            return {'records': [], 'total': 0, 'limit': limit, 'offset': offset}
 
-                # 查詢 manual 記錄
-                query = f"""
-                    SELECT
-                        ragic_id,
-                        data,
-                        cleaning_status,
-                        cleaning_updated_at
-                    FROM `{self.project_id}.{self.dataset}.{table_name}`
-                    WHERE cleaning_status = 'manual'
-                    ORDER BY cleaning_updated_at DESC
-                """
-                result = self.client.query(query).result()
+        combined_query = ' UNION ALL '.join(union_queries)
 
-                for row in result:
-                    original_values = _parse_json_field(row.data)
-                    all_records.append({
-                        'record_id': f"{tc}_{row.ragic_id}",
-                        'table_code': tc,
-                        'ragic_id': row.ragic_id,
-                        'original_values': original_values,
-                        'fixed_values': {},
-                        'violation_count': 0,
-                        'ai_suggestion': None,
-                        'confidence_score': None,
-                        'cleaned_at': row.cleaning_updated_at.isoformat() if row.cleaning_updated_at else None,
-                    })
+        # 計算總數
+        count_query = f"SELECT COUNT(*) as total FROM ({combined_query})"
+        try:
+            count_result = self.client.query(count_query).result()
+            total = list(count_result)[0].total
+        except Exception as e:
+            logger.warning(f"查詢待處理記錄總數失敗: {e}")
+            total = 0
 
-            except Exception as e:
-                logger.warning(f"查詢表格 {table_name} 待處理記錄失敗: {e}")
-                continue
+        if total == 0:
+            return {'records': [], 'total': 0, 'limit': limit, 'offset': offset}
 
-        # 排序並分頁
-        all_records.sort(key=lambda x: x.get('cleaned_at') or '', reverse=True)
-        paginated_records = all_records[offset:offset + limit]
+        # 查詢記錄（帶分頁）
+        records_query = f"""
+            SELECT * FROM ({combined_query})
+            ORDER BY cleaning_updated_at DESC
+            LIMIT {limit} OFFSET {offset}
+        """
+
+        all_records = []
+        try:
+            result = self.client.query(records_query).result()
+            for row in result:
+                original_values = _parse_json_field(row.data)
+                all_records.append({
+                    'record_id': f"{row.table_code}_{row.ragic_id}",
+                    'table_code': row.table_code,
+                    'ragic_id': row.ragic_id,
+                    'original_values': original_values,
+                    'fixed_values': {},
+                    'violation_count': 0,
+                    'ai_suggestion': None,
+                    'confidence_score': None,
+                    'cleaned_at': row.cleaning_updated_at.isoformat() if row.cleaning_updated_at else None,
+                })
+        except Exception as e:
+            logger.warning(f"查詢待處理記錄失敗: {e}")
 
         return {
-            'records': paginated_records,
+            'records': all_records,
             'total': total,
             'limit': limit,
             'offset': offset,
@@ -402,26 +405,30 @@ class BigQueryService:
             'ai_fixed': 0,
         }
 
-        # 查詢各表格的 cleaning_status 統計
-        for table_code, table_name in TABLE_MAPPING.items():
-            try:
-                query = f"""
-                    SELECT
-                        cleaning_status,
-                        COUNT(*) as count
-                    FROM `{self.project_id}.{self.dataset}.{table_name}`
-                    WHERE cleaning_status IS NOT NULL
-                    GROUP BY cleaning_status
-                """
-                result = self.client.query(query).result()
+        # 使用 UNION ALL 合併所有表格查詢（單一查詢優化效能）
+        union_queries = []
+        for table_name in TABLE_MAPPING.values():
+            union_queries.append(f"""
+                SELECT cleaning_status, COUNT(*) as count
+                FROM `{self.project_id}.{self.dataset}.{table_name}`
+                WHERE cleaning_status IS NOT NULL
+                GROUP BY cleaning_status
+            """)
 
-                for row in result:
-                    status = row.cleaning_status
-                    if status in stats:
-                        stats[status] += row.count
-            except Exception as e:
-                logger.warning(f"查詢表格 {table_name} 統計失敗: {e}")
-                continue
+        query = f"""
+            SELECT cleaning_status, SUM(count) as total_count
+            FROM ({' UNION ALL '.join(union_queries)})
+            GROUP BY cleaning_status
+        """
+
+        try:
+            result = self.client.query(query).result()
+            for row in result:
+                status = row.cleaning_status
+                if status in stats:
+                    stats[status] = row.total_count
+        except Exception as e:
+            logger.warning(f"查詢統計失敗: {e}")
 
         return stats
 
