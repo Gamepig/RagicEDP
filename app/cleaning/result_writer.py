@@ -47,6 +47,9 @@ class ResultWriter:
     def start_batch(self, trigger_type: str = "scheduled") -> CleaningBatch:
         """Create and save a new batch.
 
+        Uses SQL INSERT instead of streaming insert to avoid streaming buffer
+        conflicts with subsequent UPDATE operations.
+
         Args:
             trigger_type: How the batch was triggered
 
@@ -54,12 +57,38 @@ class ResultWriter:
             Created CleaningBatch
         """
         batch = CleaningBatch.create(trigger_type=trigger_type)
+        row = batch.to_bq_row()
 
-        errors = self.bq_client.insert_row(self.batches_table, batch.to_bq_row())
-        if errors:
-            logger.error(f"Failed to insert batch: {errors}")
+        # Use SQL INSERT instead of streaming insert to avoid streaming buffer issues
+        # Note: Don't include completed_at and error_message in initial insert (they are NULL)
+        sql = f"""
+        INSERT INTO `{self.bq_client.get_table_id(self.batches_table)}`
+        (id, trigger_type, started_at, status, total_records,
+         processed_records, auto_fixed_count, ai_fixed_count, manual_count)
+        VALUES
+        (@id, @trigger_type, @started_at, @status, @total_records,
+         @processed_records, @auto_fixed_count, @ai_fixed_count, @manual_count)
+        """
 
-        logger.info(f"Started batch: {batch.id}")
+        params = {
+            "id": row["id"],
+            "trigger_type": row["trigger_type"],
+            "started_at": row["started_at"],
+            "status": row["status"],
+            "total_records": row["total_records"],
+            "processed_records": row["processed_records"],
+            "auto_fixed_count": row["auto_fixed_count"],
+            "ai_fixed_count": row["ai_fixed_count"],
+            "manual_count": row["manual_count"],
+        }
+
+        try:
+            job = self.bq_client.query(sql, params)
+            job.result()  # Wait for completion
+            logger.info(f"Started batch: {batch.id}")
+        except Exception as e:
+            logger.error(f"Failed to insert batch: {e}")
+
         return batch
 
     def complete_batch(self, batch: CleaningBatch, error: str | None = None) -> None:
@@ -99,7 +128,8 @@ class ResultWriter:
         }
 
         try:
-            self.bq_client.query(sql, params)
+            job = self.bq_client.query(sql, params)
+            job.result()  # Wait for completion
             logger.info(f"Completed batch: {batch.id}, status={batch.status}")
         except Exception as e:
             logger.error(f"Failed to update batch: {e}")
@@ -146,34 +176,37 @@ class ResultWriter:
 
     def update_result_status(
         self,
-        result_id: str,
+        record_id: str,
+        table_code: str,
         status: str,
-        fixed_count: int | None = None,
-        pending_count: int | None = None,
+        violation_count: int | None = None,
     ) -> None:
         """Update a result's status.
 
+        Note: BigQuery schema uses (record_id, table_code) as composite key,
+        not a separate id field.
+
         Args:
-            result_id: Result ID to update
+            record_id: Record ID (ragic_id) to update
+            table_code: Table code
             status: New status
-            fixed_count: Updated fixed count
-            pending_count: Updated pending count
+            violation_count: Updated violation count
         """
         set_clauses = ["status = @status"]
-        params: dict[str, Any] = {"result_id": result_id, "status": status}
+        params: dict[str, Any] = {
+            "record_id": record_id,
+            "table_code": table_code,
+            "status": status,
+        }
 
-        if fixed_count is not None:
-            set_clauses.append("fixed_count = @fixed_count")
-            params["fixed_count"] = fixed_count
-
-        if pending_count is not None:
-            set_clauses.append("pending_count = @pending_count")
-            params["pending_count"] = pending_count
+        if violation_count is not None:
+            set_clauses.append("violation_count = @violation_count")
+            params["violation_count"] = violation_count
 
         sql = f"""
         UPDATE `{self.bq_client.get_table_id(self.results_table)}`
         SET {', '.join(set_clauses)}
-        WHERE id = @result_id
+        WHERE record_id = @record_id AND table_code = @table_code
         """
 
         try:
@@ -201,7 +234,10 @@ class ResultWriter:
         return True
 
     def write_violations(self, violations: list[Violation]) -> int:
-        """Write multiple violations.
+        """Write multiple violations with deduplication.
+
+        Uses MERGE to upsert violations, preventing duplicates when the same
+        record is processed multiple times.
 
         Args:
             violations: List of Violations to write
@@ -212,14 +248,93 @@ class ResultWriter:
         if not violations:
             return 0
 
-        rows = [v.to_bq_row() for v in violations]
-        errors = self.bq_client.insert_rows(self.violations_table, rows)
+        # Deduplicate violations by (table_code, record_id, rule_id)
+        # Keep the latest one if duplicates exist in the input
+        seen = {}
+        for v in violations:
+            key = (v.table_code, v.record_id, v.rule_id)
+            seen[key] = v
 
-        success_count = len(violations) - len(errors)
-        if errors:
-            logger.error(f"Failed to write {len(errors)} violations")
+        unique_violations = list(seen.values())
+        logger.debug(
+            f"Deduped {len(violations)} violations to {len(unique_violations)} unique"
+        )
 
-        logger.debug(f"Wrote {success_count} violations")
+        # Use MERGE to upsert (prevents duplicates from multiple runs)
+        table_id = self.bq_client.get_table_id(self.violations_table)
+
+        success_count = 0
+        for v in unique_violations:
+            try:
+                row = v.to_bq_row()
+                sql = f"""
+                MERGE `{table_id}` T
+                USING (SELECT
+                    @id as id,
+                    @table_code as table_code,
+                    @record_id as record_id,
+                    @rule_id as rule_id,
+                    @field_name as field_name,
+                    @before_value as before_value,
+                    @after_value as after_value,
+                    @severity as severity,
+                    @status as status,
+                    @ai_suggestion as ai_suggestion,
+                    @ai_confidence as ai_confidence,
+                    @detected_at as detected_at,
+                    @fixed_at as fixed_at,
+                    @fixed_by as fixed_by
+                ) S
+                ON T.table_code = S.table_code
+                   AND T.record_id = S.record_id
+                   AND T.rule_id = S.rule_id
+                WHEN MATCHED THEN UPDATE SET
+                    id = S.id,
+                    field_name = S.field_name,
+                    before_value = S.before_value,
+                    after_value = S.after_value,
+                    severity = S.severity,
+                    status = S.status,
+                    ai_suggestion = S.ai_suggestion,
+                    ai_confidence = S.ai_confidence,
+                    detected_at = S.detected_at,
+                    fixed_at = S.fixed_at,
+                    fixed_by = S.fixed_by
+                WHEN NOT MATCHED THEN INSERT (
+                    id, table_code, record_id, rule_id, field_name,
+                    before_value, after_value, severity, status,
+                    ai_suggestion, ai_confidence, detected_at, fixed_at, fixed_by
+                ) VALUES (
+                    S.id, S.table_code, S.record_id, S.rule_id, S.field_name,
+                    S.before_value, S.after_value, S.severity, S.status,
+                    S.ai_suggestion, S.ai_confidence, S.detected_at, S.fixed_at, S.fixed_by
+                )
+                """
+
+                params = {
+                    "id": row["id"],
+                    "table_code": row["table_code"],
+                    "record_id": row["record_id"],
+                    "rule_id": row["rule_id"],
+                    "field_name": row["field_name"],
+                    "before_value": row["before_value"],
+                    "after_value": row["after_value"],
+                    "severity": row["severity"],
+                    "status": row["status"],
+                    "ai_suggestion": row["ai_suggestion"],
+                    "ai_confidence": row["ai_confidence"],
+                    "detected_at": row["detected_at"],
+                    "fixed_at": row["fixed_at"],
+                    "fixed_by": row["fixed_by"],
+                }
+
+                self.bq_client.query(sql, params)
+                success_count += 1
+
+            except Exception as e:
+                logger.error(f"Failed to upsert violation {v.id}: {e}")
+
+        logger.info(f"Upserted {success_count}/{len(unique_violations)} violations")
         return success_count
 
     def update_violation_status(
@@ -371,21 +486,32 @@ class ResultWriter:
 
         return self.bq_client.query_to_list(sql, params)
 
-    def get_cleaning_stats(self, batch_id: str | None = None) -> dict[str, Any]:
+    def get_cleaning_stats(
+        self,
+        table_code: str | None = None,
+        date_from: str | None = None,
+    ) -> dict[str, Any]:
         """Get cleaning statistics.
 
         Args:
-            batch_id: Optional batch ID to filter by
+            table_code: Optional table code to filter by
+            date_from: Optional date to filter from (YYYY-MM-DD format)
 
         Returns:
             Statistics dictionary
         """
-        where_clause = ""
+        where_clauses = []
         params: dict[str, Any] = {}
 
-        if batch_id:
-            where_clause = "WHERE batch_id = @batch_id"
-            params["batch_id"] = batch_id
+        if table_code:
+            where_clauses.append("table_code = @table_code")
+            params["table_code"] = table_code
+
+        if date_from:
+            where_clauses.append("DATE(cleaned_at) >= @date_from")
+            params["date_from"] = date_from
+
+        where_clause = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
         sql = f"""
         SELECT
@@ -467,10 +593,14 @@ class ResultWriter:
 
                 try:
                     result = self.bq_client.query(sql, params)
+                    result.result()  # Wait for completion
                     # BigQuery UPDATE returns num_dml_affected_rows
-                    if hasattr(result, 'num_dml_affected_rows'):
-                        updated_count += result.num_dml_affected_rows
+                    affected = getattr(result, 'num_dml_affected_rows', None)
+                    # 確保 affected 是有效數字，避免 None 導致 TypeError
+                    if affected is not None and isinstance(affected, int):
+                        updated_count += affected
                     else:
+                        # 如果無法取得實際影響行數，使用請求的記錄數作為估計
                         updated_count += len(record_ids)
 
                     logger.debug(

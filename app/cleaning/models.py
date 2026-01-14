@@ -144,18 +144,23 @@ class CleaningResult(BaseModel):
     processed_by: str = "system"
 
     def to_bq_row(self) -> dict[str, Any]:
-        """Convert to BigQuery row format."""
+        """Convert to BigQuery row format (matching cleaning_ddl.sql schema).
+
+        Note: Model fields (id, batch_id, fixed_count, pending_count) are kept
+        for internal use but not written to BigQuery.
+        """
         return {
-            "id": self.id,
-            "table_code": self.table_code,
             "record_id": self.record_id,
-            "batch_id": self.batch_id,
+            "table_code": self.table_code,
             "status": self.status.value,
+            "original_values": None,  # Not tracked at result level
+            "fixed_values": None,  # Not tracked at result level
             "violation_count": self.violation_count,
-            "fixed_count": self.fixed_count,
-            "pending_count": self.pending_count,
-            "processed_at": self.processed_at.isoformat(),
-            "processed_by": self.processed_by,
+            "ai_suggestion": None,  # Not tracked at result level
+            "confidence_score": None,  # Not tracked at result level
+            "cleaned_at": self.processed_at.isoformat(),
+            "cleaned_by": self.processed_by,
+            "cleaning_version": "v2",
         }
 
 
@@ -183,20 +188,37 @@ class CleaningHistory(BaseModel):
         return v
 
     def to_bq_row(self) -> dict[str, Any]:
-        """Convert to BigQuery row format."""
+        """Convert to BigQuery row format (matching cleaning_ddl.sql schema).
+
+        BigQuery schema mapping:
+        - history_id ← id
+        - original_values ← before_value (with field_name context)
+        - fixed_values ← after_value (with field_name context)
+        - rule_hits ← rule_id
+        - cleaned_by ← modified_by
+        - cleaned_at ← modified_at
+        """
+        # Build original_values and fixed_values as JSON strings with field context
+        import json
+        original_values = None
+        fixed_values = None
+        if self.field_name:
+            if self.before_value is not None:
+                original_values = json.dumps({self.field_name: self.before_value})
+            if self.after_value is not None:
+                fixed_values = json.dumps({self.field_name: self.after_value})
+
         return {
-            "id": self.id,
-            "table_code": self.table_code,
+            "history_id": self.id,
             "record_id": self.record_id,
+            "table_code": self.table_code,
             "action": self.action.value,
-            "field_name": self.field_name,
-            "before_value": self.before_value,
-            "after_value": self.after_value,
-            "rule_id": self.rule_id,
-            "ai_confidence": self.ai_confidence,
-            "modified_by": self.modified_by,
-            "modified_at": self.modified_at.isoformat(),
-            "notes": self.notes,
+            "original_values": original_values,
+            "fixed_values": fixed_values,
+            "rule_hits": self.rule_id,
+            "cleaned_by": self.modified_by,
+            "cleaning_version": "v2",
+            "cleaned_at": self.modified_at.isoformat(),
         }
 
 
@@ -260,9 +282,11 @@ class FillResult(BaseModel):
     fixed_at: datetime | None = None
 
     def to_bq_row(self) -> dict[str, Any]:
-        """Convert to BigQuery row format."""
+        """Convert to BigQuery row format.
+
+        Note: BigQuery fill_results table doesn't have 'id' column.
+        """
         return {
-            "id": self.id,
             "table_code": self.table_code,
             "record_id": self.record_id,
             "field_name": self.field_name,
