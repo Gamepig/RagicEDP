@@ -208,14 +208,28 @@ class BigQueryService:
         row = rows[0]
         original_values = _parse_json_field(row.data)
 
-        # 嘗試從 violations 表查詢違規詳情
+        # 嘗試從 violations 表查詢違規詳情（使用 ROW_NUMBER 去重，保留最新）
         violations = []
         try:
             violations_query = f"""
+                WITH ranked_violations AS (
+                    SELECT
+                        rule_id,
+                        field_name,
+                        before_value,
+                        severity,
+                        status,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY table_code, record_id, rule_id
+                            ORDER BY detected_at DESC
+                        ) as rn
+                    FROM `{self.project_id}.{self.dataset}.violations`
+                    WHERE table_code = @table_code AND record_id = @ragic_id
+                      AND (status IS NULL OR status != 'fixed')
+                )
                 SELECT rule_id, field_name, before_value, severity, status
-                FROM `{self.project_id}.{self.dataset}.violations`
-                WHERE table_code = @table_code AND record_id = @ragic_id
-                  AND (status IS NULL OR status != 'fixed')
+                FROM ranked_violations
+                WHERE rn = 1
             """
             v_config = bigquery.QueryJobConfig(
                 query_parameters=[

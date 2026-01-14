@@ -1,5 +1,9 @@
 import axios from 'axios'
 
+// 認證配置 - 使用環境變數或預設值
+const API_KEY = import.meta.env.VITE_API_KEY || 'ragic-correction-2026'
+const USER_ID = import.meta.env.VITE_USER_ID || 'admin'
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -7,6 +11,8 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Pragma': 'no-cache',
+    'X-API-Key': API_KEY,
+    'X-User-ID': USER_ID,
   },
 })
 

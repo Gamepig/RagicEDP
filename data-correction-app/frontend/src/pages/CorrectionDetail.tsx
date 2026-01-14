@@ -43,7 +43,8 @@ function CorrectionDetail() {
   useEffect(() => {
     if (!record) return
 
-    const violationFields = record.violations?.map(v => v.field) || []
+    // 去重複：同一欄位可能有多個違規
+    const violationFields = [...new Set(record.violations?.map(v => v.field) || [])]
     if (violationFields.length > 0 && record.original_values) {
       const initialValues: Record<string, unknown> = {}
       for (const field of violationFields) {
@@ -95,9 +96,10 @@ function CorrectionDetail() {
   }
 
   // 取得需要修正的欄位（優先從 violations 取得，否則從 fixed_values 取得）
+  // 去重複：同一欄位可能有多個違規（如 FK-001 和 REQ-015），但只需顯示一個輸入框
   const violationFields = record.violations?.map(v => v.field) || []
   const uniqueFields = violationFields.length > 0
-    ? violationFields
+    ? [...new Set(violationFields)]
     : (record.fixed_values ? Object.keys(record.fixed_values) : [])
 
   return (
@@ -205,32 +207,36 @@ function CorrectionDetail() {
             uniqueFields.map((field) => {
               const originalValue = record.original_values?.[field]
               const fixedValue = record.fixed_values?.[field]
-              const violation = record.violations?.find(v => v.field === field)
+              // 取得該欄位的所有違規（可能有多個）
+              const fieldViolations = record.violations?.filter(v => v.field === field) || []
+              const hasViolation = fieldViolations.length > 0
 
               return (
                 <Form.Item
                   key={field}
                   name={field}
                   label={
-                    <Space>
-                      <span style={{ fontWeight: violation ? 'bold' : 'normal' }}>{field}</span>
-                      {violation && (
-                        <Tag color="red" style={{ fontSize: '12px' }}>
-                          違規: {violation.rule_id}
+                    <Space wrap>
+                      <span style={{ fontWeight: hasViolation ? 'bold' : 'normal' }}>{field}</span>
+                      {fieldViolations.map((v, i) => (
+                        <Tag key={i} color="red" style={{ fontSize: '12px' }}>
+                          {v.rule_id}
                         </Tag>
-                      )}
+                      ))}
                     </Space>
                   }
-                  tooltip={violation ? `${violation.reason}` : (originalValue !== undefined ? `原始值: ${JSON.stringify(originalValue)}` : undefined)}
-                  help={violation ? (
+                  tooltip={hasViolation
+                    ? fieldViolations.map(v => v.reason).join(' | ')
+                    : (originalValue !== undefined ? `原始值: ${JSON.stringify(originalValue)}` : undefined)}
+                  help={hasViolation ? (
                     <span style={{ color: '#faad14' }}>
-                      原始值: {violation.before || '(空)'} | {violation.reason}
+                      原始值: {fieldViolations[0]?.before || '(空)'} | {fieldViolations.map(v => v.reason).join(' | ')}
                     </span>
                   ) : undefined}
                 >
                   <Input
                     placeholder={fixedValue !== undefined ? `建議值: ${fixedValue}` : '請輸入修正值'}
-                    status={violation ? 'warning' : undefined}
+                    status={hasViolation ? 'warning' : undefined}
                   />
                 </Form.Item>
               )

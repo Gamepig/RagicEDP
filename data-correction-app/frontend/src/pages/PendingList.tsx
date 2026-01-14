@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Card, Select, Tag, Space, Button, Spin, Alert, Typography } from 'antd'
-import { EyeOutlined, FilterOutlined } from '@ant-design/icons'
+import { Table, Select, Tag, Space, Button, Spin, Alert, Typography } from 'antd'
+import { EyeOutlined, FilterOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { usePendingRecords, useTables } from '../hooks/useQueries'
 import type { PendingRecord } from '../services/api'
@@ -65,21 +65,16 @@ function PendingList() {
       key: 'record_id',
       width: 120,
       render: (id: string) => (
-        <Text strong style={{ fontFamily: 'var(--font-display)' }}>{id}</Text>
+        <Text strong style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{id}</Text>
       ),
     },
     {
       title: '表格',
       dataIndex: 'table_code',
       key: 'table_code',
-      width: 120,
+      width: 130,
       render: (code: string) => (
-        <Tag style={{
-          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%)',
-          color: '#8B5CF6',
-          border: 'none',
-          fontWeight: 500,
-        }}>
+        <Tag className="badge badge-info" style={{ margin: 0 }}>
           {TABLE_NAMES[code] || code}
         </Tag>
       ),
@@ -91,16 +86,8 @@ function PendingList() {
       width: 100,
       render: (count: number) => (
         <Tag
-          style={{
-            background: count > 0
-              ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)'
-              : 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)',
-            color: count > 0 ? '#EF4444' : '#10B981',
-            border: 'none',
-            fontWeight: 600,
-            minWidth: 32,
-            textAlign: 'center',
-          }}
+          className={`badge ${count > 0 ? 'badge-error' : 'badge-success'}`}
+          style={{ margin: 0, minWidth: 32, justifyContent: 'center' }}
         >
           {count || 0}
         </Tag>
@@ -110,27 +97,35 @@ function PendingList() {
       title: 'AI 信心度',
       dataIndex: 'confidence_score',
       key: 'confidence_score',
-      width: 120,
+      width: 140,
       render: (score: number) => {
         const percent = Math.round(score * 100)
-        const color = percent >= 80 ? '#10B981' : percent >= 50 ? '#F59E0B' : '#EF4444'
+        const color = percent >= 80 ? '#22C55E' : percent >= 50 ? '#F59E0B' : '#EF4444'
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 60,
-              height: 6,
-              background: 'var(--color-bg-secondary)',
-              borderRadius: 3,
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="soft-inset" style={{
+              width: 70,
+              height: 8,
+              borderRadius: 4,
               overflow: 'hidden',
+              padding: 0,
             }}>
               <div style={{
                 width: `${percent}%`,
                 height: '100%',
                 background: color,
-                borderRadius: 3,
+                borderRadius: 4,
+                transition: 'width 0.3s ease',
               }} />
             </div>
-            <Text style={{ fontSize: 13, fontWeight: 500, color }}>{percent}%</Text>
+            <Text style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color,
+              fontFamily: 'var(--font-mono)',
+            }}>
+              {percent}%
+            </Text>
           </div>
         )
       },
@@ -156,7 +151,6 @@ function PendingList() {
           size="small"
           icon={<EyeOutlined />}
           onClick={() => navigate(`/pending/${record.record_id}`)}
-          style={{ borderRadius: 8 }}
         >
           查看
         </Button>
@@ -169,41 +163,58 @@ function PendingList() {
   }
 
   return (
-    <div>
+    <div className="animate-fade-up">
       {/* Page Header */}
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ marginBottom: 8, fontWeight: 700 }}>
-          待處理清單
-        </Title>
-        <Text style={{ color: 'var(--color-text-muted)', fontSize: 15 }}>
-          需要人工審核與修正的資料記錄
-        </Text>
+      <div className="soft-card-static" style={{
+        padding: '20px 24px',
+        marginBottom: 24,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <Title level={2} style={{ marginBottom: 4, fontWeight: 700 }}>
+              待處理清單
+            </Title>
+            <Text style={{ color: 'var(--color-text-muted)' }}>
+              需要人工審核與修正的資料記錄
+            </Text>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Tag className="badge badge-warning" style={{ margin: 0 }}>
+              {total} 筆待處理
+            </Tag>
+          </div>
+        </div>
       </div>
 
-      <Card
-        styles={{ body: { padding: '0' } }}
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-            <FilterOutlined style={{ color: 'var(--color-accent)' }} />
-            <span>篩選條件</span>
+      {/* Filter Bar */}
+      <div className="soft-card-static" style={{
+        padding: '16px 20px',
+        marginBottom: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <FilterOutlined style={{ color: 'var(--color-accent)', fontSize: 16 }} />
+            <Text style={{ fontWeight: 500, color: 'var(--color-text-heading)' }}>篩選條件</Text>
           </div>
-        }
-        extra={
-          <Space>
+          <Space wrap>
             <Select
-              style={{ width: 180 }}
+              style={{ width: 200 }}
               placeholder="選擇表格類型"
               allowClear
               value={selectedTable}
               onChange={handleTableChange}
+              suffixIcon={<SearchOutlined />}
               options={tables.map((t) => ({
                 value: t.code,
                 label: t.name,
               }))}
             />
           </Space>
-        }
-      >
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="soft-card-static" style={{ overflow: 'hidden' }}>
         <Spin spinning={loading}>
           <Table
             columns={columns}
@@ -221,11 +232,12 @@ function PendingList() {
                   共 <Text strong style={{ color: 'var(--color-accent)' }}>{t}</Text> 筆
                 </Text>
               ),
+              style: { padding: '16px 20px', margin: 0 },
             }}
             style={{ margin: 0 }}
           />
         </Spin>
-      </Card>
+      </div>
     </div>
   )
 }

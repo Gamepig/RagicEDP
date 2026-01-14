@@ -53,17 +53,20 @@ function App() {
   ]
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh' }} className="bg-atmosphere">
       <Sider
-        width={220}
+        width={256}
+        className="soft-card-static"
         style={{
           position: 'fixed',
           left: 0,
           top: 0,
           bottom: 0,
           zIndex: 10,
-          background: 'var(--color-bg)',
-          borderRight: '1px solid var(--color-border)',
+          margin: '12px',
+          height: 'calc(100vh - 24px)',
+          borderRadius: 'var(--radius-lg)',
+          overflow: 'hidden',
         }}
       >
         {/* Logo & Brand */}
@@ -71,23 +74,30 @@ function App() {
           padding: '20px 16px',
           borderBottom: '1px solid var(--color-border)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* GREFUN Favicon Logo */}
             <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              background: mode === 'dark' ? '#FAFAFA' : '#000000',
+              width: 40,
+              height: 40,
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--color-surface)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow: 'var(--shadow-inset)',
             }}>
-              <ApartmentOutlined style={{
-                fontSize: 16,
-                color: mode === 'dark' ? '#0A0A0A' : '#FFFFFF',
-              }} />
+              <img
+                src="/favicon-grefun-64.png"
+                alt="GREFUN"
+                style={{
+                  width: 28,
+                  height: 28,
+                  imageRendering: 'auto',
+                }}
+              />
             </div>
             <div>
-              <div className="logo-text">RagicEDP</div>
+              <div className="logo-text" style={{ fontSize: '1rem' }}>RagicEDP</div>
               <Typography.Text
                 style={{
                   fontSize: '11px',
@@ -103,7 +113,21 @@ function App() {
         </div>
 
         {/* Navigation Menu */}
-        <div style={{ padding: '12px 8px', flex: 1 }}>
+        <div style={{ padding: '16px 8px', flex: 1 }}>
+          <Typography.Text
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--color-text-muted)',
+              padding: '0 12px',
+              marginBottom: '8px',
+              display: 'block',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            導航
+          </Typography.Text>
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
@@ -139,12 +163,14 @@ function App() {
         </div>
       </Sider>
 
-      <Layout style={{ marginLeft: 220 }}>
-        <Content style={{
-          padding: '24px 32px',
-          minHeight: '100vh',
-          background: 'var(--color-bg)',
-        }}>
+      <Layout style={{ marginLeft: 280 }}>
+        <Content
+          className="bg-atmosphere-data"
+          style={{
+            padding: '24px 32px',
+            minHeight: '100vh',
+          }}
+        >
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/pending" element={<PendingList />} />

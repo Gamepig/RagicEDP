@@ -37,79 +37,100 @@ function Dashboard() {
       title: '待人工處理',
       value: stats?.manual || 0,
       icon: <ExclamationCircleOutlined />,
-      color: '#D97706',
+      color: '#F59E0B',
+      bgColor: 'rgba(245, 158, 11, 0.1)',
     },
     {
       title: '已完成',
       value: stats?.completed || 0,
       icon: <CheckCircleOutlined />,
-      color: '#16A34A',
+      color: '#22C55E',
+      bgColor: 'rgba(34, 197, 94, 0.1)',
     },
     {
       title: '自動修正',
       value: stats?.auto_fixed || 0,
       icon: <ThunderboltOutlined />,
-      color: '#2563EB',
+      color: '#3B82F6',
+      bgColor: 'rgba(59, 130, 246, 0.1)',
     },
     {
       title: 'AI 修正',
       value: stats?.ai_fixed || 0,
       icon: <RobotOutlined />,
-      color: '#7C3AED',
+      color: '#8B5CF6',
+      bgColor: 'rgba(139, 92, 246, 0.1)',
     },
   ]
 
   return (
-    <div>
+    <div className="animate-fade-up">
       {/* Page Header */}
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ marginBottom: 4, fontWeight: 700 }}>
-          統計總覽
-        </Title>
-        <Text style={{ color: 'var(--color-text-muted)' }}>
-          資料清洗與修正的即時狀態一覽
-        </Text>
+      <div className="soft-card-static" style={{
+        padding: '20px 24px',
+        marginBottom: 24,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <Title level={2} style={{ marginBottom: 4, fontWeight: 700 }}>
+              統計總覽
+            </Title>
+            <Text style={{ color: 'var(--color-text-muted)' }}>
+              資料清洗與修正的即時狀態一覽
+            </Text>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="status-dot healthy status-pulse" />
+            <Text style={{ color: 'var(--color-success)', fontSize: 13, fontWeight: 500 }}>
+              系統正常運行
+            </Text>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
       <Row gutter={[16, 16]}>
-        {statCards.map((item) => (
+        {statCards.map((item, index) => (
           <Col xs={24} sm={12} lg={6} key={item.title}>
-            <Card className="stat-card">
+            <div
+              className={`soft-card animate-fade-up stagger-${index + 1}`}
+              style={{ padding: 20 }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <Text style={{
                     color: 'var(--color-text-muted)',
                     fontSize: 13,
                     display: 'block',
-                    marginBottom: 4,
+                    marginBottom: 8,
                   }}>
                     {item.title}
                   </Text>
                   <div style={{
-                    fontSize: 32,
+                    fontSize: 36,
                     fontWeight: 700,
                     color: item.color,
                     lineHeight: 1,
+                    fontFamily: 'var(--font-sans)',
                   }}>
                     {item.value.toLocaleString()}
                   </div>
                 </div>
                 <div style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 6,
-                  background: `${item.color}15`,
+                  width: 48,
+                  height: 48,
+                  borderRadius: 'var(--radius-md)',
+                  background: item.bgColor,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 18,
+                  fontSize: 22,
                   color: item.color,
                 }}>
                   {item.icon}
                 </div>
               </div>
-            </Card>
+            </div>
           </Col>
         ))}
       </Row>
@@ -117,23 +138,27 @@ function Dashboard() {
       {/* Progress Overview */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card>
-            <Title level={5} style={{ marginBottom: 20, fontWeight: 600 }}>
+          <Card className="soft-card animate-fade-up stagger-5">
+            <Title level={5} style={{ marginBottom: 24, fontWeight: 600 }}>
               處理進度
             </Title>
             <div style={{ textAlign: 'center' }}>
               <Progress
                 type="dashboard"
                 percent={completionRate}
-                size={160}
-                strokeColor="#2563EB"
-                trailColor="var(--color-border)"
+                size={180}
+                strokeColor={{
+                  '0%': '#3B82F6',
+                  '100%': '#22C55E',
+                }}
+                trailColor="var(--color-inset-bg)"
+                strokeWidth={10}
                 format={(percent) => (
                   <div>
-                    <div style={{ fontSize: 32, fontWeight: 700 }}>
+                    <div style={{ fontSize: 40, fontWeight: 700, color: 'var(--color-text-heading)' }}>
                       {percent}%
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 4 }}>
                       完成率
                     </div>
                   </div>
@@ -143,51 +168,83 @@ function Dashboard() {
             <div style={{
               display: 'flex',
               justifyContent: 'center',
-              gap: 32,
-              marginTop: 20,
+              gap: 48,
+              marginTop: 24,
             }}>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#16A34A' }}>
+                <div style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  color: '#22C55E',
+                  fontFamily: 'var(--font-sans)',
+                }}>
                   {stats?.completed || 0}
                 </div>
-                <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>已完成</div>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>已完成</div>
               </div>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#D97706' }}>
+                <div style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  color: '#F59E0B',
+                  fontFamily: 'var(--font-sans)',
+                }}>
                   {stats?.manual || 0}
                 </div>
-                <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>待處理</div>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>待處理</div>
               </div>
             </div>
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card>
-            <Title level={5} style={{ marginBottom: 20, fontWeight: 600 }}>
+          <Card className="soft-card animate-fade-up stagger-5">
+            <Title level={5} style={{ marginBottom: 24, fontWeight: 600 }}>
               修正來源分佈
             </Title>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {[
-                { label: '自動修正', value: stats?.auto_fixed || 0, color: '#2563EB', total },
-                { label: 'AI 修正', value: stats?.ai_fixed || 0, color: '#7C3AED', total },
-                { label: '人工修正', value: stats?.completed || 0, color: '#16A34A', total },
+                { label: '自動修正', value: stats?.auto_fixed || 0, color: '#3B82F6', total },
+                { label: 'AI 修正', value: stats?.ai_fixed || 0, color: '#8B5CF6', total },
+                { label: '人工修正', value: stats?.completed || 0, color: '#22C55E', total },
               ].map((item) => (
                 <div key={item.label}>
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    marginBottom: 6,
+                    marginBottom: 8,
                   }}>
-                    <Text style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{item.label}</Text>
-                    <Text style={{ fontWeight: 600, fontSize: 13 }}>{item.value.toLocaleString()}</Text>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: item.color,
+                      }} />
+                      <Text style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{item.label}</Text>
+                    </div>
+                    <Text style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      color: 'var(--color-text-heading)',
+                      fontFamily: 'var(--font-sans)',
+                    }}>
+                      {item.value.toLocaleString()}
+                    </Text>
                   </div>
-                  <Progress
-                    percent={item.total > 0 ? Math.round((item.value / item.total) * 100) : 0}
-                    showInfo={false}
-                    strokeColor={item.color}
-                    trailColor="var(--color-border)"
-                    size={{ height: 8 }}
-                  />
+                  <div className="soft-inset" style={{
+                    height: 10,
+                    borderRadius: 5,
+                    overflow: 'hidden',
+                    padding: 0,
+                  }}>
+                    <div style={{
+                      width: `${item.total > 0 ? Math.round((item.value / item.total) * 100) : 0}%`,
+                      height: '100%',
+                      background: `linear-gradient(90deg, ${item.color}, ${item.color}dd)`,
+                      borderRadius: 5,
+                      transition: 'width 0.5s ease',
+                    }} />
+                  </div>
                 </div>
               ))}
             </div>
