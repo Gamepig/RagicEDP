@@ -106,24 +106,29 @@ class SQLCleaner:
         record_ids: list[str] | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Fetch records from BigQuery."""
+        """Fetch records from BigQuery.
+
+        Uses parameterized queries to prevent SQL injection.
+        """
         if record_ids:
-            ids_str = ", ".join([f"'{rid}'" for rid in record_ids])
+            # Use parameterized query with UNNEST for array parameter
             sql = f"""
             SELECT *
             FROM `{table_id}`
-            WHERE ragic_id IN ({ids_str})
-            LIMIT {limit}
+            WHERE ragic_id IN UNNEST(@record_ids)
+            LIMIT @limit
             """
+            params = {"record_ids": record_ids, "limit": limit}
         else:
             sql = f"""
             SELECT *
             FROM `{table_id}`
             WHERE cleaning_status IS NULL OR cleaning_status = 'pending'
-            LIMIT {limit}
+            LIMIT @limit
             """
+            params = {"limit": limit}
 
-        return self.bq_client.query_to_list(sql)
+        return self.bq_client.query_to_list(sql, params)
 
     def _apply_rule(
         self,

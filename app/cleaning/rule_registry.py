@@ -44,7 +44,7 @@ class FillTrigger(BaseModel):
 class FillLogic(BaseModel):
     """Fill logic with SQL query."""
 
-    type: Literal["sql_query"] = "sql_query"
+    type: str = Field(default="sql_query", description="Query type (sql_query, sql_update)")
     query: str = Field(..., description="BigQuery SQL query")
 
 
@@ -73,6 +73,7 @@ class BaseFillRule(BaseModel):
 
     id: str = Field(..., pattern=r"^FILL-[A-Z]+-\d{3}$")
     name: str = Field(..., min_length=1, max_length=100)
+    type: str = Field(default="auto_fill", description="Rule type")  # Added for subclass access
     tables: list[str]
     target_field: str = Field(..., description="Target field to fill")
     target_field_id: str | int | None = None
@@ -96,24 +97,25 @@ class AutoFillRule(BaseFillRule):
     """Auto fill rule - SQL query based (FILL-CUST-*)."""
 
     type: Literal["auto_fill"] = "auto_fill"
-    category: Literal["customer_stats"] = "customer_stats"
-    source: str = Field(default="order_detail_calculation")
+    category: str = Field(default="customer_stats", description="Rule category")
+    source: str | dict = Field(default="order_detail_calculation")  # Allow dict for complex sources
     trigger: FillTrigger
-    fill_logic: FillLogic
+    fill_logic: FillLogic | None = None  # Optional for some rules
     refresh: Literal["once", "daily", "weekly"] = "daily"
     data_type: str | None = None
 
 
 class LookupFillRule(BaseFillRule):
-    """Lookup fill rule - FK based (FILL-OD-001 to 004)."""
+    """Lookup fill rule - FK based (FILL-OD-001 to 004, FILL-ORD-001)."""
 
     type: Literal["lookup_fill"] = "lookup_fill"
-    category: Literal["order_lookup"] = "order_lookup"
+    category: str = Field(default="order_lookup", description="Rule category")
     source_table: int = Field(..., description="Source table code")
     source_table_name: str = Field(..., description="Source table BQ name")
     lookup_key: str = Field(..., description="Field to match on")
     source_field: str = Field(..., description="Field to retrieve")
     trigger: FillTrigger
+    fill_logic: FillLogic | None = None  # Optional for complex queries
     affected_count: int | None = None
 
 
@@ -121,7 +123,7 @@ class CascadeFillRule(BaseFillRule):
     """Cascade fill rule - Multiple sources (FILL-OD-005, 006)."""
 
     type: Literal["cascade_fill"] = "cascade_fill"
-    category: Literal["order_lookup"] = "order_lookup"
+    category: str = Field(default="order_lookup", description="Rule category")
     trigger: FillTrigger
     fill_sources: list[FillSource] = Field(..., description="Ordered fill sources")
     affected_count: int | None = None
@@ -248,9 +250,9 @@ class CleaningRule(BaseModel):
         config = get_symbol_config()
         return config.get_sheet_table(table_code)
 
-    def matches_table(self, table_code: str) -> bool:
+    def matches_table(self, table_code: str | int) -> bool:
         """Check if rule applies to a table."""
-        return table_code in self.tables
+        return str(table_code) in self.tables
 
     def compile_pattern(self) -> re.Pattern | None:
         """Compile regex pattern if present."""
@@ -398,7 +400,8 @@ class RuleRegistry:
                     logger.error(f"Invalid fill rule: {rule_data.get('id', 'unknown')}: {e}")
 
             self._fill_loaded = True
-            logger.info(f"Loaded {loaded} fill rules from {fill_file.name}")
+            tables_indexed = list(self._fill_rules_by_table.keys())
+            logger.info(f"Loaded {loaded} fill rules from {fill_file.name}, tables: {tables_indexed}")
             return loaded
 
         except Exception as e:
@@ -426,6 +429,7 @@ class RuleRegistry:
 
     def _ensure_fill_loaded(self) -> None:
         """Ensure fill rules are loaded."""
+        logger.info(f"_ensure_fill_loaded called: _fill_loaded={self._fill_loaded}, _fill_rules_by_table keys={list(self._fill_rules_by_table.keys())}")
         if not self._fill_loaded:
             self.load_fill_rules()
 
@@ -439,10 +443,15 @@ class RuleRegistry:
         self._ensure_fill_loaded()
         return self._fill_rules_by_type.get(rule_type, [])
 
-    def get_fill_rules_by_table(self, table_code: str) -> list[BaseFillRule]:
+    def get_fill_rules_by_table(self, table_code: str | int) -> list[BaseFillRule]:
         """Get fill rules that apply to a table."""
         self._ensure_fill_loaded()
-        return self._fill_rules_by_table.get(table_code, [])
+        # Ensure table_code is string (YAML defines tables as strings)
+        table_code_str = str(table_code)
+        result = self._fill_rules_by_table.get(table_code_str, [])
+        if not result:
+            logger.warning(f"get_fill_rules_by_table({table_code_str}): found 0 rules, available tables: {list(self._fill_rules_by_table.keys())}, _fill_loaded={self._fill_loaded}")
+        return result
 
     def get_all_fill_rules(self) -> list[BaseFillRule]:
         """Get all fill rules."""
@@ -468,30 +477,33 @@ class RuleRegistry:
         self._ensure_loaded()
         return self._rules_by_category.get(category, [])
 
-    def get_rules_by_table(self, table_code: str) -> list[CleaningRule]:
+    def get_rules_by_table(self, table_code: str | int) -> list[CleaningRule]:
         """Get all rules that apply to a table."""
         self._ensure_loaded()
-        return self._rules_by_table.get(table_code, [])
+        table_code_str = str(table_code)
+        return self._rules_by_table.get(table_code_str, [])
 
     def get_enabled_rules(self) -> list[CleaningRule]:
         """Get all enabled rules."""
         self._ensure_loaded()
         return [r for r in self._rules.values() if r.enabled]
 
-    def get_validation_rules(self, table_code: str | None = None) -> list[CleaningRule]:
+    def get_validation_rules(self, table_code: str | int | None = None) -> list[CleaningRule]:
         """Get validation rules, optionally filtered by table."""
         self._ensure_loaded()
         rules = [r for r in self._rules.values() if r.type == "validation" and r.enabled]
-        if table_code:
-            rules = [r for r in rules if r.matches_table(table_code)]
+        if table_code is not None:
+            table_code_str = str(table_code)
+            rules = [r for r in rules if r.matches_table(table_code_str)]
         return rules
 
-    def get_fill_rules(self, table_code: str | None = None, phase: int | None = None) -> list[CleaningRule]:
+    def get_fill_rules(self, table_code: str | int | None = None, phase: int | None = None) -> list[CleaningRule]:
         """Get auto-fill rules, optionally filtered by table and phase."""
         self._ensure_loaded()
         rules = [r for r in self._rules.values() if r.type == "auto_fill" and r.enabled]
-        if table_code:
-            rules = [r for r in rules if r.matches_table(table_code)]
+        if table_code is not None:
+            table_code_str = str(table_code)
+            rules = [r for r in rules if r.matches_table(table_code_str)]
         if phase is not None:
             rules = [r for r in rules if r.execution_phase == phase]
         return sorted(rules, key=lambda r: r.execution_phase)

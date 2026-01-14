@@ -86,11 +86,11 @@ class SymbolConfig:
     # Sheet / Table Methods
     # =========================================================================
 
-    def get_sheet_table(self, code: str) -> str:
+    def get_sheet_table(self, code: str | int) -> str:
         """Get BigQuery table name for sheet code.
 
         Args:
-            code: Sheet code (e.g., "50", "60")
+            code: Sheet code (e.g., "50", "60", or 50, 60)
 
         Returns:
             BigQuery table name (e.g., "sheet_50_order")
@@ -99,34 +99,37 @@ class SymbolConfig:
             KeyError: If sheet code not found
         """
         sheets = self._config.get("sheets", {})
-        if code not in sheets:
-            raise KeyError(f"Unknown sheet code: {code}")
-        return sheets[code]["bq_table"]
+        code_str = str(code)  # Ensure string comparison
+        if code_str not in sheets:
+            raise KeyError(f"Unknown sheet code: {code_str}")
+        return sheets[code_str]["bq_table"]
 
-    def get_sheet_ragic_path(self, code: str) -> str:
+    def get_sheet_ragic_path(self, code: str | int) -> str:
         """Get Ragic API path for sheet code.
 
         Args:
-            code: Sheet code (e.g., "50")
+            code: Sheet code (e.g., "50" or 50)
 
         Returns:
             Ragic path (e.g., "forms8/17")
         """
         sheets = self._config.get("sheets", {})
-        if code not in sheets:
-            raise KeyError(f"Unknown sheet code: {code}")
-        return sheets[code]["ragic_path"]
+        code_str = str(code)
+        if code_str not in sheets:
+            raise KeyError(f"Unknown sheet code: {code_str}")
+        return sheets[code_str]["ragic_path"]
 
     def get_all_sheet_codes(self) -> list[str]:
         """Get all configured sheet codes."""
         return list(self._config.get("sheets", {}).keys())
 
-    def get_sheet_info(self, code: str) -> dict[str, Any]:
+    def get_sheet_info(self, code: str | int) -> dict[str, Any]:
         """Get full info for a sheet code."""
         sheets = self._config.get("sheets", {})
-        if code not in sheets:
-            raise KeyError(f"Unknown sheet code: {code}")
-        return sheets[code]
+        code_str = str(code)
+        if code_str not in sheets:
+            raise KeyError(f"Unknown sheet code: {code_str}")
+        return sheets[code_str]
 
     # =========================================================================
     # Secret Methods
@@ -285,7 +288,7 @@ def get_symbol_config() -> SymbolConfig:
 
 
 # Convenience functions
-def get_sheet_table(code: str) -> str:
+def get_sheet_table(code: str | int) -> str:
     """Get BigQuery table name for sheet code."""
     return get_symbol_config().get_sheet_table(code)
 

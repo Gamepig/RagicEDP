@@ -303,32 +303,64 @@ class BigQueryClient:
     def _build_query_params(
         self,
         params: dict[str, Any],
-    ) -> list[bigquery.ScalarQueryParameter]:
+    ) -> list:
         """Build BigQuery query parameters.
 
         Args:
             params: Dictionary of parameter name -> value
 
         Returns:
-            List of ScalarQueryParameter
+            List of ScalarQueryParameter or ArrayQueryParameter
         """
         bq_params = []
         for name, value in params.items():
-            if isinstance(value, str):
-                param_type = "STRING"
-            elif isinstance(value, int):
-                param_type = "INT64"
-            elif isinstance(value, float):
-                param_type = "FLOAT64"
+            # Handle list/array types
+            if isinstance(value, list):
+                if not value:
+                    # Empty list - default to STRING array
+                    bq_params.append(
+                        bigquery.ArrayQueryParameter(name, "STRING", [])
+                    )
+                elif isinstance(value[0], str):
+                    bq_params.append(
+                        bigquery.ArrayQueryParameter(name, "STRING", value)
+                    )
+                elif isinstance(value[0], int):
+                    bq_params.append(
+                        bigquery.ArrayQueryParameter(name, "INT64", value)
+                    )
+                elif isinstance(value[0], float):
+                    bq_params.append(
+                        bigquery.ArrayQueryParameter(name, "FLOAT64", value)
+                    )
+                else:
+                    # Default to STRING array
+                    bq_params.append(
+                        bigquery.ArrayQueryParameter(name, "STRING", [str(v) for v in value])
+                    )
+            # Handle scalar types
+            elif isinstance(value, str):
+                bq_params.append(
+                    bigquery.ScalarQueryParameter(name, "STRING", value)
+                )
             elif isinstance(value, bool):
-                param_type = "BOOL"
+                # Check bool before int (bool is subclass of int)
+                bq_params.append(
+                    bigquery.ScalarQueryParameter(name, "BOOL", value)
+                )
+            elif isinstance(value, int):
+                bq_params.append(
+                    bigquery.ScalarQueryParameter(name, "INT64", value)
+                )
+            elif isinstance(value, float):
+                bq_params.append(
+                    bigquery.ScalarQueryParameter(name, "FLOAT64", value)
+                )
             else:
-                param_type = "STRING"
-                value = str(value)
-
-            bq_params.append(
-                bigquery.ScalarQueryParameter(name, param_type, value)
-            )
+                # Default to STRING
+                bq_params.append(
+                    bigquery.ScalarQueryParameter(name, "STRING", str(value))
+                )
         return bq_params
 
     def close(self) -> None:

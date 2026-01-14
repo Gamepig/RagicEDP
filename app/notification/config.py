@@ -57,7 +57,7 @@ def load_config() -> NotificationConfig:
         line_notify_token=os.getenv("LINE_NOTIFY_TOKEN", ""),
         correction_app_url=os.getenv(
             "CORRECTION_APP_URL",
-            "https://ragic-correction.example.com"
+            "https://data-correction-app-571015722523.asia-east1.run.app"
         ),
     )
 

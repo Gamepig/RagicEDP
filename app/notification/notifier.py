@@ -38,7 +38,7 @@ class Notifier:
 
         # Configuration from environment
         self.app_url = os.environ.get(
-            "DATA_CORRECTION_APP_URL", "https://correction.ragic-edp.example.com"
+            "DATA_CORRECTION_APP_URL", "https://data-correction-app-571015722523.asia-east1.run.app"
         )
         self.escalation_days = int(os.environ.get("ESCALATION_DAYS", "3"))
         self.enable_notifications = (

@@ -171,6 +171,12 @@ class CleaningEngine:
     ) -> dict[str, Any]:
         """Process a single table.
 
+        處理順序（重要）：
+        1. Phase 1: Auto-fill - 先從關聯表回填缺失欄位
+        2. Phase 2: Validation - 再驗證資料（此時已有回填資料）
+        3. Phase 3: Auto-fix - 自動修復格式問題
+        4. Phase 4: AI Analysis - AI 分析無法自動修復的問題
+
         Args:
             batch: Current batch
             table_code: Table to process
@@ -191,32 +197,10 @@ class CleaningEngine:
         }
 
         try:
-            # Phase 1: SQL Validation
-            violations = self.sql_cleaner.validate_table(
-                table_code, record_ids, limit=self.max_records
-            )
-            stats["violations_found"] = len(violations)
-
-            # Phase 2: Auto-fix violations
-            fixed_violations: list[Violation] = []
             histories = []
 
-            if violations:
-                fixed_violations, histories = self.field_fixer.fix_violations(violations)
-
-                # Count results
-                auto_fixed = len([v for v in fixed_violations if v.status.value == "auto_fixed"])
-                pending = len([v for v in fixed_violations if v.status.value == "pending"])
-
-                stats["auto_fixed"] = auto_fixed
-                stats["pending_manual"] = pending
-
-                # Update batch counts
-                batch.processed_records += len(set(v.record_id for v in fixed_violations))
-                batch.auto_fixed_count += auto_fixed
-                batch.manual_count += pending
-
-            # Phase 3: Auto-fill missing fields
+            # Phase 1: Auto-fill missing fields FIRST (before validation)
+            # 先從關聯表回填缺失欄位（如從訂單明細回填訂單的客戶編號）
             fill_results: list[FillResult] = []
             if self.enable_auto_fill:
                 fill_results = self.auto_filler.fill_table(
@@ -230,6 +214,32 @@ class CleaningEngine:
                 batch.auto_fixed_count += auto_filled
 
                 logger.info(f"Table {table_code}: auto_filled={auto_filled}")
+
+            # Phase 2: SQL Validation (after auto-fill)
+            # 回填後再驗證，避免對可自動回填的欄位產生假違規
+            violations = self.sql_cleaner.validate_table(
+                table_code, record_ids, limit=self.max_records
+            )
+            stats["violations_found"] = len(violations)
+
+            # Phase 3: Auto-fix violations
+            fixed_violations: list[Violation] = []
+
+            if violations:
+                fixed_violations, fix_histories = self.field_fixer.fix_violations(violations)
+                histories.extend(fix_histories)
+
+                # Count results
+                auto_fixed = len([v for v in fixed_violations if v.status.value == "auto_fixed"])
+                pending = len([v for v in fixed_violations if v.status.value == "pending"])
+
+                stats["auto_fixed"] = auto_fixed
+                stats["pending_manual"] = pending
+
+                # Update batch counts
+                batch.processed_records += len(set(v.record_id for v in fixed_violations))
+                batch.auto_fixed_count += auto_fixed
+                batch.manual_count += pending
 
             # Phase 4: AI Analysis for pending violations
             if self.enable_ai and fixed_violations:
@@ -256,10 +266,10 @@ class CleaningEngine:
                     stats["ai_fixed"] = ai_fixed_count
                     batch.ai_fixed_count += ai_fixed_count
 
-                    # Update pending count
+                    # Update pending count (subtract AI-fixed from previously accumulated manual_count)
                     pending = len([v for v in fixed_violations if v.status.value == "pending"])
                     stats["pending_manual"] = pending
-                    batch.manual_count = pending
+                    batch.manual_count -= ai_fixed_count  # Subtract AI-fixed, don't replace
 
                     logger.info(f"Table {table_code}: ai_fixed={ai_fixed_count}")
 
