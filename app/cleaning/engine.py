@@ -266,6 +266,15 @@ class CleaningEngine:
                     stats["ai_fixed"] = ai_fixed_count
                     batch.ai_fixed_count += ai_fixed_count
 
+                    # Apply AI corrections to actual data in sheet table
+                    if ai_fixed_count > 0:
+                        ai_corrected = self.result_writer.apply_ai_corrections(
+                            table_code, fixed_violations
+                        )
+                        logger.info(
+                            f"Table {table_code}: applied {ai_corrected} AI corrections to data"
+                        )
+
                     # Update pending count (subtract AI-fixed from previously accumulated manual_count)
                     pending = len([v for v in fixed_violations if v.status.value == "pending"])
                     stats["pending_manual"] = pending

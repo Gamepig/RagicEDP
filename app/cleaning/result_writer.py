@@ -17,6 +17,7 @@ from app.cleaning.models import (
     CleaningStatus,
     FillResult,
     Violation,
+    ViolationStatus,
 )
 from app.utils.bq_client import BigQueryClient, get_bq_client
 from app.utils.symbol_config import get_symbol_config
@@ -443,6 +444,107 @@ class ResultWriter:
 
         logger.debug(f"Wrote {success_count} fill results")
         return success_count
+
+    # =========================================================================
+    # AI Correction Operations
+    # =========================================================================
+
+    def apply_ai_corrections(
+        self,
+        table_code: str,
+        violations: list[Violation],
+    ) -> int:
+        """Apply AI-fixed values to sheet table's data JSON.
+
+        This method updates the actual data content in the sheet table,
+        not just the cleaning_status. It uses JSON_SET to modify specific
+        fields within the data JSON column.
+
+        Args:
+            table_code: Table code (e.g., "50", "60")
+            violations: List of AI-fixed violations with after_value set
+
+        Returns:
+            Number of successfully updated records
+        """
+        # Filter for AI-fixed violations with valid after_value
+        ai_fixed = [
+            v for v in violations
+            if v.status == ViolationStatus.AI_FIXED and v.after_value is not None
+        ]
+
+        if not ai_fixed:
+            return 0
+
+        try:
+            # Get BigQuery table name from symbol config
+            symbol_config = get_symbol_config()
+            bq_table = symbol_config.get_sheet_table(table_code)
+            table_id = self.bq_client.get_table_id(bq_table)
+
+            updated_count = 0
+
+            # Process each violation individually to update specific fields
+            # Group by record_id for efficiency (multiple fields per record)
+            records_updates: dict[str, list[Violation]] = {}
+            for v in ai_fixed:
+                if v.record_id not in records_updates:
+                    records_updates[v.record_id] = []
+                records_updates[v.record_id].append(v)
+
+            for record_id, record_violations in records_updates.items():
+                try:
+                    # Build JSON_SET chain for multiple fields
+                    # Start with: JSON_SET(PARSE_JSON(data), '$.field1', value1)
+                    # Chain: JSON_SET(..., '$.field2', value2)
+                    json_set_expr = "PARSE_JSON(data)"
+                    params: dict[str, Any] = {"record_id": record_id}
+
+                    for idx, v in enumerate(record_violations):
+                        param_name = f"value_{idx}"
+                        # Escape field name for JSON path
+                        field_path = f'$."{v.field_name}"'
+                        json_set_expr = f"JSON_SET({json_set_expr}, '{field_path}', @{param_name})"
+                        params[param_name] = v.after_value
+
+                    sql = f"""
+                    UPDATE `{table_id}`
+                    SET
+                        data = TO_JSON_STRING({json_set_expr}),
+                        cleaning_status = 'ai_fixed',
+                        cleaning_updated_at = @updated_at
+                    WHERE ragic_id = @record_id
+                    """
+
+                    params["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+                    result = self.bq_client.query(sql, params)
+                    result.result()  # Wait for completion
+
+                    affected = getattr(result, 'num_dml_affected_rows', None)
+                    if affected is not None and isinstance(affected, int) and affected > 0:
+                        updated_count += 1
+                        logger.debug(
+                            f"Applied AI correction to {bq_table} record {record_id}: "
+                            f"{len(record_violations)} field(s) updated"
+                        )
+                    else:
+                        # Assume success if no error
+                        updated_count += 1
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to apply AI correction to record {record_id}: {e}"
+                    )
+
+            logger.info(
+                f"Table {table_code}: applied AI corrections to {updated_count} records' data"
+            )
+            return updated_count
+
+        except Exception as e:
+            logger.error(f"Failed to apply AI corrections: {e}")
+            return 0
 
     # =========================================================================
     # Query Operations

@@ -76,7 +76,7 @@ class AIAnalyzer:
             os.environ.get("AI_CONFIDENCE_THRESHOLD", "0.90")
         )
         self.auto_apply_threshold = float(
-            os.environ.get("AI_AUTO_APPLY_THRESHOLD", "0.95")
+            os.environ.get("AI_AUTO_APPLY_THRESHOLD", "0.85")
         )
 
     def analyze_violation(
