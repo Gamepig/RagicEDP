@@ -29,8 +29,14 @@ function Dashboard() {
     return <Alert type="error" message="載入統計資訊失敗" showIcon />
   }
 
-  const total = (stats?.completed || 0) + (stats?.manual || 0) + (stats?.auto_fixed || 0) + (stats?.ai_fixed || 0)
-  const completionRate = total > 0 ? Math.round(((stats?.completed || 0) / total) * 100) : 0
+  // 已完成 = completed + auto_fixed + ai_fixed（所有已處理的記錄）
+  const completedTotal = (stats?.completed || 0) + (stats?.auto_fixed || 0) + (stats?.ai_fixed || 0)
+  // 待處理 = manual（需要人工處理的記錄）
+  const pendingTotal = stats?.manual || 0
+  // 總數 = 已完成 + 待處理
+  const total = completedTotal + pendingTotal
+  // 完成率 = 已完成 / 總數
+  const completionRate = total > 0 ? Math.round((completedTotal / total) * 100) : 0
 
   const statCards = [
     {
@@ -178,7 +184,7 @@ function Dashboard() {
                   color: '#22C55E',
                   fontFamily: 'var(--font-sans)',
                 }}>
-                  {stats?.completed || 0}
+                  {completedTotal}
                 </div>
                 <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>已完成</div>
               </div>
@@ -189,7 +195,7 @@ function Dashboard() {
                   color: '#F59E0B',
                   fontFamily: 'var(--font-sans)',
                 }}>
-                  {stats?.manual || 0}
+                  {pendingTotal}
                 </div>
                 <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>待處理</div>
               </div>
