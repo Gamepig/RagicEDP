@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Card, Row, Col, Spin, Alert, Typography, Progress } from 'antd'
 import {
   CheckCircleOutlined,
@@ -6,29 +5,12 @@ import {
   RobotOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
-import { getStatistics, type Statistics } from '../services/api'
+import { useStatistics } from '../hooks/useQueries'
 
 const { Title, Text } = Typography
 
 function Dashboard() {
-  const [stats, setStats] = useState<Statistics | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const data = await getStatistics()
-        setStats(data)
-      } catch (err) {
-        setError('載入統計資訊失敗')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStats()
-  }, [])
+  const { data: stats, isLoading: loading, error } = useStatistics()
 
   if (loading) {
     return (
@@ -44,7 +26,7 @@ function Dashboard() {
   }
 
   if (error) {
-    return <Alert type="error" message={error} showIcon />
+    return <Alert type="error" message="載入統計資訊失敗" showIcon />
   }
 
   const total = (stats?.completed || 0) + (stats?.manual || 0) + (stats?.auto_fixed || 0) + (stats?.ai_fixed || 0)

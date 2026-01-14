@@ -1,14 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Table, Card, Select, DatePicker, Space, Spin, Alert, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import { HistoryOutlined, CalendarOutlined } from '@ant-design/icons'
-import {
-  getCorrectionHistory,
-  getTables,
-  type CorrectionHistory,
-  type TableInfo,
-} from '../services/api'
+import { useCorrectionHistory, useTables } from '../hooks/useQueries'
+import type { CorrectionHistory as CorrectionHistoryType } from '../services/api'
 
 const { Title, Text } = Typography
 
@@ -29,74 +25,46 @@ const TABLE_NAMES: Record<string, string> = {
 const { RangePicker } = DatePicker
 
 function History() {
-  const [history, setHistory] = useState<CorrectionHistory[]>([])
-  const [tables, setTables] = useState<TableInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedTable, setSelectedTable] = useState<string | undefined>()
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([
     null,
     null,
   ])
 
-  const fetchHistory = async (
-    tableCode?: string,
-    dates?: [Dayjs | null, Dayjs | null]
-  ) => {
-    setLoading(true)
-    try {
-      const params: {
-        table_code?: string
-        date_from?: string
-        date_to?: string
-        limit: number
-      } = { limit: 100 }
+  // 構建查詢參數
+  const queryParams = useMemo(() => {
+    const params: {
+      table_code?: string
+      date_from?: string
+      date_to?: string
+      limit: number
+    } = { limit: 100 }
 
-      if (tableCode) {
-        params.table_code = tableCode
-      }
-      if (dates && dates[0]) {
-        params.date_from = dates[0].format('YYYY-MM-DD')
-      }
-      if (dates && dates[1]) {
-        params.date_to = dates[1].format('YYYY-MM-DD')
-      }
-
-      const data = await getCorrectionHistory(params)
-      setHistory(data)
-    } catch (err) {
-      setError('載入修正歷史失敗')
-      console.error(err)
-    } finally {
-      setLoading(false)
+    if (selectedTable) {
+      params.table_code = selectedTable
     }
-  }
-
-  useEffect(() => {
-    const fetchTables = async () => {
-      try {
-        const data = await getTables()
-        setTables(data)
-      } catch (err) {
-        console.error('載入表格列表失敗', err)
-      }
+    if (dateRange[0]) {
+      params.date_from = dateRange[0].format('YYYY-MM-DD')
     }
-    fetchTables()
-    fetchHistory()
-  }, [])
+    if (dateRange[1]) {
+      params.date_to = dateRange[1].format('YYYY-MM-DD')
+    }
+    return params
+  }, [selectedTable, dateRange])
+
+  // React Query hooks
+  const { data: tables = [] } = useTables()
+  const { data: history = [], isLoading: loading, error } = useCorrectionHistory(queryParams)
 
   const handleTableChange = (value: string | undefined) => {
     setSelectedTable(value)
-    fetchHistory(value, dateRange)
   }
 
   const handleDateChange = (dates: [Dayjs | null, Dayjs | null] | null) => {
-    const newDates: [Dayjs | null, Dayjs | null] = dates || [null, null]
-    setDateRange(newDates)
-    fetchHistory(selectedTable, newDates)
+    setDateRange(dates || [null, null])
   }
 
-  const columns: ColumnsType<CorrectionHistory> = [
+  const columns: ColumnsType<CorrectionHistoryType> = [
     {
       title: '記錄 ID',
       dataIndex: 'record_id',
@@ -152,7 +120,7 @@ function History() {
   ]
 
   if (error) {
-    return <Alert type="error" message={error} showIcon />
+    return <Alert type="error" message="載入修正歷史失敗" showIcon />
   }
 
   return (

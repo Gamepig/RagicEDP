@@ -83,8 +83,7 @@ deploy_service() {
         --min-instances 0 \
         --max-instances 3 \
         --timeout 300 \
-        --set-env-vars "GCP_PROJECT_ID=$PROJECT_ID,BQ_DATASET=erp_backup" \
-        --set-secrets "GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest"
+        --set-env-vars "GCP_PROJECT_ID=$PROJECT_ID,BQ_DATASET=erp_backup,ENV=development"
 
     log_info "Service deployed successfully!"
 }

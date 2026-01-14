@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { Card, Select, Spin, Row, Col, Alert, Button, Space, Tooltip, Typography } from 'antd'
+import { Card, Select, Spin, Row, Col, Alert, Button, Space, Tooltip, Typography, message } from 'antd'
 import {
   TableOutlined,
   DatabaseOutlined,
@@ -8,15 +8,13 @@ import {
   ExpandOutlined,
   AppstoreOutlined,
   ClusterOutlined,
+  ReloadOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
 import mermaid from 'mermaid'
 import DOMPurify from 'dompurify'
-import {
-  getSchemaMermaid,
-  getSchemaStats,
-  type SchemaStats,
-} from '../services/api'
+import { useSchemaMermaid, useSchemaStats, useRefreshSchema } from '../hooks/useQueries'
 
 const { Text } = Typography
 
@@ -26,11 +24,28 @@ interface StarSchemaProps {
 
 function StarSchema({ level: initialLevel = 'overview' }: StarSchemaProps) {
   const [level, setLevel] = useState<'overview' | 'detailed'>(initialLevel)
-  const [mermaidCode, setMermaidCode] = useState<string>('')
-  const [stats, setStats] = useState<SchemaStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const diagramRef = useRef<HTMLDivElement>(null)
+
+  // React Query hooks - 自動去重、快取、loading 狀態管理
+  const {
+    data: mermaidData,
+    isLoading: mermaidLoading,
+    error: mermaidError,
+  } = useSchemaMermaid(level)
+
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    error: statsError,
+  } = useSchemaStats()
+
+  const refreshMutation = useRefreshSchema()
+
+  // 組合 loading 和 error 狀態
+  const loading = mermaidLoading || statsLoading
+  const error = mermaidError || statsError
+  const mermaidCode = mermaidData?.mermaid || ''
+  const lastUpdatedAt = stats?.last_updated_at || mermaidData?.last_updated_at || null
 
   // 初始化 Mermaid（設定 securityLevel 防止 XSS）
   useEffect(() => {
@@ -47,28 +62,6 @@ function StarSchema({ level: initialLevel = 'overview' }: StarSchemaProps) {
       },
     })
   }, [])
-
-  // 載入資料
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const [mermaidRes, statsRes] = await Promise.all([
-          getSchemaMermaid(level),
-          getSchemaStats(),
-        ])
-        setMermaidCode(mermaidRes.mermaid)
-        setStats(statsRes)
-      } catch (err) {
-        setError('載入星狀模型失敗')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [level])
 
   // 渲染 Mermaid 圖表（使用 DOMPurify 防止 XSS）
   useEffect(() => {
@@ -91,12 +84,36 @@ function StarSchema({ level: initialLevel = 'overview' }: StarSchemaProps) {
     }
   }, [mermaidCode, level])
 
+  // 刷新處理 - 使用 mutation
+  const handleRefresh = () => {
+    refreshMutation.mutate(undefined, {
+      onSuccess: (res) => {
+        message.success(res.message)
+      },
+      onError: () => {
+        message.error('刷新失敗，請稍後再試')
+      },
+    })
+  }
+
   const handleLevelChange = (value: 'overview' | 'detailed') => {
     setLevel(value)
   }
 
+  // 格式化更新時間
+  const formatUpdatedTime = (timestamp: number | null): string => {
+    if (!timestamp) return '未知'
+    const date = new Date(timestamp * 1000)
+    return date.toLocaleString('zh-TW', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   if (error) {
-    return <Alert type="error" message={error} showIcon />
+    return <Alert type="error" message="載入星狀模型失敗" showIcon />
   }
 
   const statCards = [
@@ -185,15 +202,38 @@ function StarSchema({ level: initialLevel = 'overview' }: StarSchemaProps) {
           </div>
         }
         extra={
-          <Select
-            value={level}
-            onChange={handleLevelChange}
-            style={{ width: 120 }}
-            options={[
-              { value: 'overview', label: '概覽' },
-              { value: 'detailed', label: '詳細' },
-            ]}
-          />
+          <Space size="middle">
+            {/* 上次更新時間 */}
+            <Tooltip title="上次從 BigQuery 獲取的時間">
+              <Space size={4} style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                <ClockCircleOutlined />
+                <span>{formatUpdatedTime(lastUpdatedAt)}</span>
+              </Space>
+            </Tooltip>
+
+            {/* 刷新按鈕 */}
+            <Tooltip title="從 BigQuery 重新獲取最新表結構">
+              <Button
+                icon={<ReloadOutlined spin={refreshMutation.isPending} />}
+                onClick={handleRefresh}
+                loading={refreshMutation.isPending}
+                disabled={loading}
+              >
+                刷新
+              </Button>
+            </Tooltip>
+
+            {/* 視圖選擇 */}
+            <Select
+              value={level}
+              onChange={handleLevelChange}
+              style={{ width: 120 }}
+              options={[
+                { value: 'overview', label: '概覽' },
+                { value: 'detailed', label: '詳細' },
+              ]}
+            />
+          </Space>
         }
       >
         <Spin spinning={loading}>

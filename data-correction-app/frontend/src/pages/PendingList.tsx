@@ -1,14 +1,10 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Card, Select, Tag, Space, Button, Spin, Alert, Typography } from 'antd'
 import { EyeOutlined, FilterOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import {
-  getPendingRecords,
-  getTables,
-  type PendingRecord,
-  type TableInfo,
-} from '../services/api'
+import { usePendingRecords, useTables } from '../hooks/useQueries'
+import type { PendingRecord } from '../services/api'
 
 const { Title, Text } = Typography
 
@@ -28,76 +24,38 @@ const TABLE_NAMES: Record<string, string> = {
 
 function PendingList() {
   const navigate = useNavigate()
-  const [records, setRecords] = useState<PendingRecord[]>([])
-  const [tables, setTables] = useState<TableInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedTable, setSelectedTable] = useState<string | undefined>()
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 20,
-    total: 0,
   })
 
-  // 請求計數器，用於防止競態條件
-  const requestIdRef = useRef(0)
+  // React Query hooks
+  const { data: tables = [] } = useTables()
+  const {
+    data: recordsData,
+    isLoading: loading,
+    error,
+  } = usePendingRecords({
+    table_code: selectedTable,
+    limit: pagination.pageSize,
+    offset: (pagination.current - 1) * pagination.pageSize,
+  })
 
-  const fetchRecords = useCallback(async (page = 1, tableCode?: string, pageSize = 20) => {
-    const currentRequestId = ++requestIdRef.current
-    setLoading(true)
-    try {
-      const data = await getPendingRecords({
-        table_code: tableCode,
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-      })
-      // 只有最新的請求才更新狀態
-      if (currentRequestId === requestIdRef.current) {
-        setRecords(data.records)
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
-          pageSize,
-          total: data.total,
-        }))
-      }
-    } catch (err) {
-      if (currentRequestId === requestIdRef.current) {
-        setError('載入待處理記錄失敗')
-        console.error(err)
-      }
-    } finally {
-      if (currentRequestId === requestIdRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    const fetchTables = async () => {
-      try {
-        const data = await getTables()
-        setTables(data)
-      } catch (err) {
-        console.error('載入表格列表失敗', err)
-      }
-    }
-    fetchTables()
-    fetchRecords(1, undefined, pagination.pageSize)
-  }, [fetchRecords, pagination.pageSize])
+  const records = recordsData?.records || []
+  const total = recordsData?.total || 0
 
   const handleTableChange = useCallback((value: string | undefined) => {
     setSelectedTable(value)
     setPagination((prev) => ({ ...prev, current: 1 }))
-    fetchRecords(1, value, pagination.pageSize)
-  }, [fetchRecords, pagination.pageSize])
+  }, [])
 
   const handlePageChange = useCallback((page: number, pageSize?: number) => {
     const newPageSize = pageSize || pagination.pageSize
     // 如果 pageSize 變了，重置到第一頁
     const newPage = pageSize && pageSize !== pagination.pageSize ? 1 : page
-    fetchRecords(newPage, selectedTable, newPageSize)
-  }, [fetchRecords, selectedTable, pagination.pageSize])
+    setPagination({ current: newPage, pageSize: newPageSize })
+  }, [pagination.pageSize])
 
   // 使用 useMemo 避免每次渲染重建 columns
   const columns: ColumnsType<PendingRecord> = useMemo(() => [
@@ -207,7 +165,7 @@ function PendingList() {
   ], [navigate])
 
   if (error) {
-    return <Alert type="error" message={error} showIcon />
+    return <Alert type="error" message="載入待處理記錄失敗" showIcon />
   }
 
   return (
@@ -252,13 +210,15 @@ function PendingList() {
             dataSource={records}
             rowKey="record_id"
             pagination={{
-              ...pagination,
+              current: pagination.current,
+              pageSize: pagination.pageSize,
+              total,
               onChange: handlePageChange,
               showSizeChanger: true,
               pageSizeOptions: ['10', '20', '50', '100'],
-              showTotal: (total) => (
+              showTotal: (t) => (
                 <Text style={{ color: 'var(--color-text-muted)' }}>
-                  共 <Text strong style={{ color: 'var(--color-accent)' }}>{total}</Text> 筆
+                  共 <Text strong style={{ color: 'var(--color-accent)' }}>{t}</Text> 筆
                 </Text>
               ),
             }}

@@ -329,6 +329,11 @@ class CleaningEngine:
         if fill_results:
             self.result_writer.write_fill_results(fill_results)
 
+        # Update cleaning_status in sheet tables
+        if results:
+            record_statuses = {r.record_id: r.status for r in results}
+            self.result_writer.update_sheet_cleaning_status(table_code, record_statuses)
+
     def _determine_status(self, violations: list[Violation]) -> CleaningStatus:
         """Determine overall status for a record based on its violations."""
         if not violations:

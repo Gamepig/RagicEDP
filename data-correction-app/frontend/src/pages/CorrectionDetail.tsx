@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
@@ -14,11 +14,7 @@ import {
   message,
 } from 'antd'
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons'
-import {
-  getRecordDetail,
-  submitCorrection,
-  type RecordDetail,
-} from '../services/api'
+import { useRecordDetail, useSubmitCorrection } from '../hooks/useQueries'
 
 // 表格名稱對照
 const TABLE_NAMES: Record<string, string> = {
@@ -39,42 +35,29 @@ function CorrectionDetail() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
-  const [record, setRecord] = useState<RecordDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // React Query hooks
+  const { data: record, isLoading: loading, error } = useRecordDetail(id || '')
+  const submitMutation = useSubmitCorrection()
 
+  // 設定表單初始值
   useEffect(() => {
-    const fetchRecord = async () => {
-      if (!id) return
-      try {
-        const data = await getRecordDetail(id)
-        setRecord(data)
-        // 設定表單初始值（優先使用 original_values 中對應違規欄位的值）
-        const violationFields = data.violations?.map(v => v.field) || []
-        if (violationFields.length > 0 && data.original_values) {
-          // 只取違規欄位的原始值作為初始值
-          const initialValues: Record<string, unknown> = {}
-          for (const field of violationFields) {
-            if (field in data.original_values) {
-              initialValues[field] = data.original_values[field]
-            }
-          }
-          form.setFieldsValue(initialValues)
-        } else if (data.fixed_values) {
-          form.setFieldsValue(data.fixed_values)
-        }
-      } catch (err) {
-        setError('載入記錄失敗')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchRecord()
-  }, [id, form])
+    if (!record) return
 
-  const handleSubmit = async (values: Record<string, unknown>) => {
+    const violationFields = record.violations?.map(v => v.field) || []
+    if (violationFields.length > 0 && record.original_values) {
+      const initialValues: Record<string, unknown> = {}
+      for (const field of violationFields) {
+        if (field in record.original_values) {
+          initialValues[field] = record.original_values[field]
+        }
+      }
+      form.setFieldsValue(initialValues)
+    } else if (record.fixed_values) {
+      form.setFieldsValue(record.fixed_values)
+    }
+  }, [record, form])
+
+  const handleSubmit = (values: Record<string, unknown>) => {
     if (!id) return
 
     Modal.confirm({
@@ -82,21 +65,19 @@ function CorrectionDetail() {
       content: '確定要儲存修正結果嗎？',
       okText: '確認',
       cancelText: '取消',
-      onOk: async () => {
-        setSubmitting(true)
-        try {
-          await submitCorrection({
-            record_id: id,
-            fixed_values: values,
-          })
-          message.success('修正已儲存')
-          navigate('/pending')
-        } catch (err) {
-          message.error('儲存失敗')
-          console.error(err)
-        } finally {
-          setSubmitting(false)
-        }
+      onOk: () => {
+        submitMutation.mutate(
+          { record_id: id, fixed_values: values },
+          {
+            onSuccess: () => {
+              message.success('修正已儲存')
+              navigate('/pending')
+            },
+            onError: () => {
+              message.error('儲存失敗')
+            },
+          }
+        )
       },
     })
   }
@@ -110,7 +91,7 @@ function CorrectionDetail() {
   }
 
   if (error || !record) {
-    return <Alert type="error" message={error || '記錄不存在'} />
+    return <Alert type="error" message={error ? '載入記錄失敗' : '記錄不存在'} />
   }
 
   // 取得需要修正的欄位（優先從 violations 取得，否則從 fixed_values 取得）
@@ -268,7 +249,7 @@ function CorrectionDetail() {
                 type="primary"
                 htmlType="submit"
                 icon={<SaveOutlined />}
-                loading={submitting}
+                loading={submitMutation.isPending}
                 disabled={uniqueFields.length === 0}
               >
                 儲存修正

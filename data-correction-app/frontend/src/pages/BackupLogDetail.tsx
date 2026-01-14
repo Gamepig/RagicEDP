@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
@@ -26,12 +26,11 @@ import {
   DatabaseOutlined,
   CodeOutlined,
 } from '@ant-design/icons'
-import {
-  getDailyBackupDetail,
-  type DailyBackupDetailResponse,
-  type SheetBackupDetail,
-  type CleaningStatsByTable,
-  type FixedRecordSummary,
+import { useDailyBackupDetail } from '../hooks/useQueries'
+import type {
+  SheetBackupDetail,
+  CleaningStatsByTable,
+  FixedRecordSummary,
 } from '../services/api'
 
 const { Title, Text } = Typography
@@ -117,44 +116,23 @@ function parseErrorMessage(errorMessage: string, sheetName: string): {
 function BackupLogDetail() {
   const { date } = useParams<{ date: string }>()
   const navigate = useNavigate()
-  const [detail, setDetail] = useState<DailyBackupDetailResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [recordsPagination, setRecordsPagination] = useState({
     current: 1,
     pageSize: 50,
-    total: 0,
   })
 
-  const fetchDetail = async (recordsPage = 1) => {
-    if (!date) return
-    setLoading(true)
-    try {
-      const data = await getDailyBackupDetail(date, {
-        records_limit: recordsPagination.pageSize,
-        records_offset: (recordsPage - 1) * recordsPagination.pageSize,
-      })
-      setDetail(data)
-      setRecordsPagination((prev) => ({
-        ...prev,
-        current: recordsPage,
-        total: data.fixed_records_total,
-      }))
-    } catch (err) {
-      setError('載入備份詳情失敗')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  // 構建查詢參數
+  const queryParams = useMemo(() => ({
+    records_limit: recordsPagination.pageSize,
+    records_offset: (recordsPagination.current - 1) * recordsPagination.pageSize,
+  }), [recordsPagination])
 
-  useEffect(() => {
-    fetchDetail()
-  }, [date])
+  // React Query hook
+  const { data: detail, isLoading: loading, error } = useDailyBackupDetail(date || '', queryParams)
 
-  const handleRecordsPageChange = (page: number) => {
-    fetchDetail(page)
-  }
+  const handleRecordsPageChange = useCallback((page: number) => {
+    setRecordsPagination((prev) => ({ ...prev, current: page }))
+  }, [])
 
   // 備份日誌表格欄位
   const logColumns: ColumnsType<SheetBackupDetail> = [
@@ -391,7 +369,7 @@ function BackupLogDetail() {
   }
 
   if (error || !detail) {
-    return <Alert type="error" message={error || '記錄不存在'} />
+    return <Alert type="error" message={error ? '載入備份詳情失敗' : '記錄不存在'} />
   }
 
   const { summary, sheet_logs, cleaning_stats, fixed_records } = detail
@@ -552,7 +530,7 @@ function BackupLogDetail() {
             <Space>
               <CheckCircleOutlined style={{ color: 'var(--color-accent)' }} />
               <span>修正記錄</span>
-              <Tag>{recordsPagination.total} 筆</Tag>
+              <Tag>{detail?.fixed_records_total || 0} 筆</Tag>
             </Space>
           }
         >
@@ -562,10 +540,12 @@ function BackupLogDetail() {
               dataSource={fixed_records}
               rowKey="record_id"
               pagination={{
-                ...recordsPagination,
+                current: recordsPagination.current,
+                pageSize: recordsPagination.pageSize,
+                total: detail?.fixed_records_total || 0,
                 onChange: handleRecordsPageChange,
                 showSizeChanger: false,
-                showTotal: (total) => `共 ${total} 筆`,
+                showTotal: (t) => `共 ${t} 筆`,
               }}
               size="small"
             />

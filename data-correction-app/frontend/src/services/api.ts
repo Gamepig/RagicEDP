@@ -127,11 +127,26 @@ export interface SchemaStats {
   dim_tables: Record<string, { name: string; count: number; error?: string }>
   total_records: number
   total_tables: number
+  last_updated_at?: number
 }
 
 export interface MermaidResponse {
   mermaid: string
   level: string
+  last_updated_at?: number
+}
+
+export interface CacheStatus {
+  cached: boolean
+  age_seconds?: number
+  ttl_seconds: number
+  last_updated_at?: number
+}
+
+export interface RefreshResponse {
+  success: boolean
+  message: string
+  last_updated_at: number
 }
 
 export async function getSchemaMermaid(
@@ -143,6 +158,16 @@ export async function getSchemaMermaid(
 
 export async function getSchemaStats(): Promise<SchemaStats> {
   const response = await api.get('/schema/stats')
+  return response.data
+}
+
+export async function refreshSchema(): Promise<RefreshResponse> {
+  const response = await api.post('/schema/refresh')
+  return response.data
+}
+
+export async function getSchemaCacheStatus(): Promise<CacheStatus> {
+  const response = await api.get('/schema/cache')
   return response.data
 }
 

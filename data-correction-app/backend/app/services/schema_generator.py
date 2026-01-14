@@ -1,7 +1,7 @@
 """
-星狀模型生成器
+星狀模型生成器（動態版本）
 
-生成 Mermaid 圖表和統計資訊
+從 BigQuery INFORMATION_SCHEMA 動態讀取表結構
 """
 from typing import Dict, Any, Optional
 import logging
@@ -10,9 +10,11 @@ import re
 
 from google.cloud import bigquery
 
+from .metadata_inspector import MetadataInspector, SchemaMetadata
+
 logger = logging.getLogger(__name__)
 
-# BigQuery identifier 白名單驗證（project 可含 '-'，dataset/table 通常只含 '_'）
+# BigQuery identifier 白名單驗證（保留現有驗證）
 _BQ_PROJECT_PATTERN = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 _BQ_DATASET_TABLE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,1023}$")
 
@@ -31,81 +33,36 @@ def _validate_identifier(value: str, field: str) -> str:
     return value
 
 
+# 表格中英文名稱映射（用於顯示）
+TABLE_DISPLAY_NAMES = {
+    'fact_orders': '訂單表',
+    'fact_order_details': '訂單明細表',
+    'dim_brand': '品牌表',
+    'dim_channel': '通路表',
+    'dim_payment': '金流表',
+    'dim_logistics': '物流表',
+    'dim_postal': '郵遞區號表',
+    'dim_customer': '客戶表',
+    'dim_product': '商品表',
+    'dim_campaign': '活動管理表',
+}
+
+# 關聯定義（維度表 -> 事實表）
+# 這個配置定義了維度表與事實表之間的關係
+RELATIONSHIPS = {
+    'dim_brand': ['fact_order_details'],
+    'dim_channel': ['fact_orders'],
+    'dim_payment': ['fact_orders'],
+    'dim_logistics': ['fact_orders'],
+    'dim_postal': ['fact_orders'],
+    'dim_customer': ['fact_orders'],
+    'dim_product': ['fact_order_details'],
+    'dim_campaign': ['fact_orders'],
+}
+
+
 class StarSchemaGenerator:
-    """星狀模型圖生成器"""
-
-    # 事實表
-    FACT_TABLES = ['fact_orders', 'fact_order_details']
-
-    # 維度表與關聯（key_en 用於 Mermaid，key 用於顯示）
-    DIM_TABLES = {
-        'dim_brand': {
-            'name': '品牌表',
-            'key': '品牌編號',
-            'key_en': 'brand_id',
-            'facts': ['fact_order_details'],
-        },
-        'dim_channel': {
-            'name': '通路表',
-            'key': '通路編號',
-            'key_en': 'channel_id',
-            'facts': ['fact_orders'],
-        },
-        'dim_payment': {
-            'name': '金流表',
-            'key': '金流編號',
-            'key_en': 'payment_id',
-            'facts': ['fact_orders'],
-        },
-        'dim_logistics': {
-            'name': '物流表',
-            'key': '物流編號',
-            'key_en': 'logistics_id',
-            'facts': ['fact_orders'],
-        },
-        'dim_postal': {
-            'name': '郵遞區號表',
-            'key': '郵遞區號',
-            'key_en': 'postal_code',
-            'facts': ['fact_orders'],
-        },
-        'dim_customer': {
-            'name': '客戶表',
-            'key': '客戶編號',
-            'key_en': 'customer_id',
-            'facts': ['fact_orders'],
-        },
-        'dim_product': {
-            'name': '商品表',
-            'key': '商品編號',
-            'key_en': 'product_id',
-            'facts': ['fact_order_details'],
-        },
-        'dim_campaign': {
-            'name': '活動管理表',
-            'key': '活動編號',
-            'key_en': 'campaign_id',
-            'facts': ['fact_orders'],
-        },
-    }
-
-    # 事實表欄位（使用英文欄位名稱給 Mermaid）
-    FACT_FIELDS = {
-        'fact_orders': {
-            'name': '訂單表',
-            'key': '訂單編號',
-            'key_en': 'order_id',
-            'measures': ['total_amount', 'discount'],
-            'fks': ['customer_id', 'channel_id', 'payment_id', 'logistics_id', 'postal_code', 'campaign_id'],
-        },
-        'fact_order_details': {
-            'name': '訂單明細表',
-            'key': '訂單編號',
-            'key_en': 'order_id',
-            'measures': ['quantity', 'unit_price', 'subtotal', 'discount'],
-            'fks': ['product_id', 'brand_id'],
-        },
-    }
+    """星狀模型圖生成器（動態版本）"""
 
     def __init__(
         self,
@@ -132,6 +89,43 @@ class StarSchemaGenerator:
         self.dataset = _validate_identifier(raw_dataset, "dataset")
         self.client = bq_client or bigquery.Client(project=self.project_id)
 
+        # 元數據檢查器
+        self._inspector = MetadataInspector(
+            client=self.client,
+            project_id=self.project_id,
+            dataset=self.dataset,
+        )
+
+        # 快取的元數據
+        self._metadata: Optional[SchemaMetadata] = None
+
+    def get_metadata(self, force_refresh: bool = False) -> SchemaMetadata:
+        """
+        獲取 Schema 元數據（使用內部快取）
+
+        Args:
+            force_refresh: 強制重新獲取
+
+        Returns:
+            SchemaMetadata
+        """
+        if self._metadata is None or force_refresh:
+            self._metadata = self._inspector.fetch_all_metadata(include_columns=True)
+            logger.info(f"Schema 元數據已更新: {self._metadata.total_tables} 表格")
+        return self._metadata
+
+    @property
+    def last_updated_at(self) -> Optional[float]:
+        """上次更新時間（Unix timestamp）"""
+        if self._metadata:
+            return self._metadata.fetched_at
+        return None
+
+    def invalidate_cache(self) -> None:
+        """清除快取"""
+        self._metadata = None
+        logger.info("Schema 快取已清除")
+
     def generate_mermaid(self, level: str = "overview") -> str:
         """
         生成 Mermaid 圖表程式碼
@@ -142,176 +136,153 @@ class StarSchemaGenerator:
         Returns:
             Mermaid 程式碼
         """
+        metadata = self.get_metadata()
+
         if level == "detailed":
-            return self._generate_detailed_mermaid()
-        return self._generate_overview_mermaid()
+            return self._generate_detailed_mermaid(metadata)
+        return self._generate_overview_mermaid(metadata)
 
-    def _generate_overview_mermaid(self) -> str:
-        """生成概覽圖（使用英文欄位名稱）"""
-        lines = [
-            "erDiagram",
-            "    %% Fact Tables",
-        ]
+    def _generate_overview_mermaid(self, metadata: SchemaMetadata) -> str:
+        """生成概覽圖（動態從 BigQuery 讀取）"""
+        lines = ["erDiagram", "    %% Fact Tables"]
 
-        # 事實表
-        for fact_table, info in self.FACT_FIELDS.items():
-            lines.append(f"    {fact_table} {{")
-            lines.append(f"        string {info['key_en']} PK")
-            for measure in info['measures']:
-                lines.append(f"        number {measure}")
+        # 動態生成事實表
+        for name, table in metadata.fact_tables.items():
+            lines.append(f"    {name} {{")
+            # 找出 PK 欄位（通常是第一個 *_id 欄位或 order_id）
+            pk_cols = [c for c in table.columns if c.name.endswith('_id')]
+            if pk_cols:
+                lines.append(f"        string {pk_cols[0].name} PK")
+            # 找出數值欄位作為 measures
+            for col in table.columns:
+                if col.data_type in ('INT64', 'FLOAT64', 'NUMERIC', 'DECIMAL', 'BIGNUMERIC'):
+                    if not col.name.endswith('_id'):
+                        lines.append(f"        number {col.name}")
             lines.append("    }")
 
         lines.append("    %% Dimension Tables")
 
-        # 維度表
-        for dim_table, info in self.DIM_TABLES.items():
-            lines.append(f"    {dim_table} {{")
-            lines.append(f"        string {info['key_en']} PK")
+        # 動態生成維度表
+        for name, table in metadata.dim_tables.items():
+            lines.append(f"    {name} {{")
+            # PK 欄位（通常是第一個欄位或 *_id / postal_code）
+            pk_cols = [c for c in table.columns if c.name.endswith('_id') or c.name == 'postal_code']
+            if pk_cols:
+                lines.append(f"        string {pk_cols[0].name} PK")
+            elif table.columns:
+                # 如果沒有明顯的 PK，使用第一個欄位
+                lines.append(f"        string {table.columns[0].name} PK")
             lines.append("    }")
 
         lines.append("    %% Relationships")
 
-        # 關聯
-        for dim_table, info in self.DIM_TABLES.items():
-            for fact_table in info['facts']:
-                lines.append(f"    {dim_table} ||--o{{ {fact_table} : \"\"")
+        # 生成關聯（使用配置的 RELATIONSHIPS）
+        for dim_name in metadata.dim_tables:
+            related_facts = RELATIONSHIPS.get(dim_name, [])
+            for fact_name in related_facts:
+                if fact_name in metadata.fact_tables:
+                    lines.append(f"    {dim_name} ||--o{{ {fact_name} : \"\"")
 
         return "\n".join(lines)
 
-    def _generate_detailed_mermaid(self) -> str:
-        """生成詳細圖（含所有欄位，使用英文名稱）"""
-        lines = [
-            "erDiagram",
-            "    %% Fact Tables with all fields",
-        ]
+    def _generate_detailed_mermaid(self, metadata: SchemaMetadata) -> str:
+        """生成詳細圖（含所有欄位，動態從 BigQuery 讀取）"""
+        lines = ["erDiagram", "    %% Fact Tables with all fields"]
 
-        # 事實表
-        for fact_table, info in self.FACT_FIELDS.items():
-            lines.append(f"    {fact_table} {{")
-            lines.append(f"        string {info['key_en']} PK")
-            for fk in info['fks']:
-                lines.append(f"        string {fk} FK")
-            for measure in info['measures']:
-                lines.append(f"        number {measure}")
-            lines.append("        timestamp order_date")
-            lines.append("        timestamp backup_date")
+        for name, table in metadata.fact_tables.items():
+            lines.append(f"    {name} {{")
+            for col in table.columns:
+                col_type = self._map_bq_type(col.data_type)
+                # 判斷 PK/FK
+                suffix = ""
+                if col.ordinal_position == 1 and col.name.endswith('_id'):
+                    suffix = " PK"
+                elif col.name.endswith('_id'):
+                    suffix = " FK"
+                lines.append(f"        {col_type} {col.name}{suffix}")
             lines.append("    }")
 
         lines.append("    %% Dimension Tables with all fields")
 
-        # 維度表額外欄位（英文）
-        dim_extra_fields = {
-            'dim_brand': ['brand_name'],
-            'dim_channel': ['channel_name', 'brand_id', 'phone', 'email'],
-            'dim_payment': ['payment_name'],
-            'dim_logistics': ['logistics_name'],
-            'dim_postal': ['city', 'district'],
-            'dim_customer': ['customer_name', 'mobile', 'phone', 'email', 'tax_id'],
-            'dim_product': ['product_name', 'brand_id', 'unit_price'],
-            'dim_campaign': ['campaign_name', 'start_date', 'end_date'],
-        }
-
-        for dim_table, info in self.DIM_TABLES.items():
-            lines.append(f"    {dim_table} {{")
-            lines.append(f"        string {info['key_en']} PK")
-            for field in dim_extra_fields.get(dim_table, []):
-                field_type = "timestamp" if "date" in field else "string"
-                lines.append(f"        {field_type} {field}")
-            lines.append("        timestamp backup_date")
+        for name, table in metadata.dim_tables.items():
+            lines.append(f"    {name} {{")
+            for col in table.columns:
+                col_type = self._map_bq_type(col.data_type)
+                suffix = " PK" if col.ordinal_position == 1 else ""
+                lines.append(f"        {col_type} {col.name}{suffix}")
             lines.append("    }")
 
         lines.append("    %% Relationships")
 
-        # 關聯
-        for dim_table, info in self.DIM_TABLES.items():
-            for fact_table in info['facts']:
-                lines.append(f"    {dim_table} ||--o{{ {fact_table} : \"{info['key_en']}\"")
+        for dim_name in metadata.dim_tables:
+            related_facts = RELATIONSHIPS.get(dim_name, [])
+            for fact_name in related_facts:
+                if fact_name in metadata.fact_tables:
+                    # 提取 key 名稱
+                    key_col = dim_name.replace('dim_', '') + '_id'
+                    if dim_name == 'dim_postal':
+                        key_col = 'postal_code'
+                    lines.append(f"    {dim_name} ||--o{{ {fact_name} : \"{key_col}\"")
 
         return "\n".join(lines)
 
+    def _map_bq_type(self, bq_type: str) -> str:
+        """BigQuery 類型映射到 Mermaid 類型"""
+        type_map = {
+            'STRING': 'string',
+            'INT64': 'number',
+            'FLOAT64': 'number',
+            'NUMERIC': 'number',
+            'DECIMAL': 'number',
+            'BIGNUMERIC': 'number',
+            'BOOL': 'boolean',
+            'BOOLEAN': 'boolean',
+            'DATE': 'date',
+            'DATETIME': 'datetime',
+            'TIMESTAMP': 'timestamp',
+            'TIME': 'time',
+            'JSON': 'json',
+            'BYTES': 'bytes',
+            'GEOGRAPHY': 'geography',
+        }
+        return type_map.get(bq_type.upper(), 'string')
+
     def generate_stats(self) -> Dict[str, Any]:
         """
-        生成統計資訊（使用 UNION ALL 優化為單一查詢）
+        生成統計資訊（使用動態元數據）
 
         Returns:
             統計資訊字典
         """
-        stats = {
+        metadata = self.get_metadata()
+
+        stats: Dict[str, Any] = {
             'fact_tables': {},
             'dim_tables': {},
             'total_records': 0,
-            'total_tables': len(self.FACT_TABLES) + len(self.DIM_TABLES),
+            'total_tables': metadata.total_tables,
+            'last_updated_at': metadata.fetched_at,
         }
 
-        # 初始化所有表格（預設 count=0）
-        for fact_table in self.FACT_TABLES:
-            stats['fact_tables'][fact_table] = {
-                'name': self.FACT_FIELDS[fact_table]['name'],
-                'count': 0,
+        # 事實表統計
+        for name, table in metadata.fact_tables.items():
+            display_name = TABLE_DISPLAY_NAMES.get(name, name)
+            stats['fact_tables'][name] = {
+                'name': display_name,
+                'count': table.row_count,
             }
-        for dim_table, info in self.DIM_TABLES.items():
-            stats['dim_tables'][dim_table] = {
-                'name': info['name'],
-                'count': 0,
+            stats['total_records'] += table.row_count
+
+        # 維度表統計
+        for name, table in metadata.dim_tables.items():
+            display_name = TABLE_DISPLAY_NAMES.get(name, name)
+            stats['dim_tables'][name] = {
+                'name': display_name,
+                'count': table.row_count,
             }
-
-        # 使用 UNION ALL 合併所有表格的 COUNT 查詢
-        union_queries = []
-        all_tables = list(self.FACT_TABLES) + list(self.DIM_TABLES.keys())
-
-        for table_name in all_tables:
-            validated_table = _validate_identifier(table_name, "table_name")
-            union_queries.append(f"""
-                SELECT '{validated_table}' as table_name, COUNT(*) as count
-                FROM `{self.project_id}.{self.dataset}.{validated_table}`
-            """)
-
-        try:
-            query = " UNION ALL ".join(union_queries)
-            result = self.client.query(query).result()
-
-            for row in result:
-                table_name = row.table_name
-                count = row.count
-
-                if table_name in self.FACT_TABLES:
-                    stats['fact_tables'][table_name]['count'] = count
-                else:
-                    stats['dim_tables'][table_name]['count'] = count
-
-                stats['total_records'] += count
-
-        except Exception as e:
-            logger.warning(f"統計查詢失敗: {e}")
-            # 標記所有表格的錯誤
-            for fact_table in self.FACT_TABLES:
-                stats['fact_tables'][fact_table]['error'] = str(e)
-            for dim_table in self.DIM_TABLES:
-                stats['dim_tables'][dim_table]['error'] = str(e)
+            stats['total_records'] += table.row_count
 
         return stats
-
-    def _get_table_count(self, table_name: str) -> int:
-        """
-        取得表格記錄數
-
-        Args:
-            table_name: 表格名稱（已在 FACT_TABLES/DIM_TABLES 中定義）
-
-        Returns:
-            記錄數量
-        """
-        # 額外驗證 table_name（即使來自常數也做防護）
-        validated_table = _validate_identifier(table_name, "table_name")
-
-        query = f"""
-            SELECT COUNT(*) as count
-            FROM `{self.project_id}.{self.dataset}.{validated_table}`
-        """
-        result = self.client.query(query).result()
-        for row in result:
-            return row.count
-        return 0
 
     def generate_html(self, level: str = "overview") -> str:
         """
@@ -347,6 +318,12 @@ class StarSchemaGenerator:
         h1 {{
             color: #1890ff;
             text-align: center;
+        }}
+        .update-info {{
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 16px;
         }}
         .stats {{
             display: grid;
@@ -385,6 +362,9 @@ class StarSchemaGenerator:
 <body>
     <div class="container">
         <h1>RagicEDP 星狀模型圖</h1>
+        <div class="update-info">
+            資料來源: BigQuery INFORMATION_SCHEMA (動態讀取)
+        </div>
 
         <div class="stats">
             <div class="stat-card">

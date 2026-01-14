@@ -14,10 +14,12 @@ from app.cleaning.models import (
     CleaningBatch,
     CleaningHistory,
     CleaningResult,
+    CleaningStatus,
     FillResult,
     Violation,
 )
 from app.utils.bq_client import BigQueryClient, get_bq_client
+from app.utils.symbol_config import get_symbol_config
 
 
 class ResultWriter:
@@ -409,6 +411,85 @@ class ResultWriter:
             "manual": 0,
             "failed": 0,
         }
+
+    # =========================================================================
+    # Sheet Status Update Operations
+    # =========================================================================
+
+    def update_sheet_cleaning_status(
+        self,
+        table_code: str,
+        record_statuses: dict[str, CleaningStatus],
+    ) -> int:
+        """Update cleaning_status field in sheet tables.
+
+        Args:
+            table_code: Table code (e.g., "50", "60")
+            record_statuses: Dict mapping record_id (ragic_id) to CleaningStatus
+
+        Returns:
+            Number of successfully updated records
+        """
+        if not record_statuses:
+            return 0
+
+        try:
+            # Get BigQuery table name from symbol config
+            symbol_config = get_symbol_config()
+            bq_table = symbol_config.get_sheet_table(table_code)
+            table_id = self.bq_client.get_table_id(bq_table)
+
+            updated_count = 0
+
+            # Group by status for efficient batch updates
+            status_groups: dict[str, list[str]] = {}
+            for record_id, status in record_statuses.items():
+                status_value = status.value
+                if status_value not in status_groups:
+                    status_groups[status_value] = []
+                status_groups[status_value].append(record_id)
+
+            # Update each status group
+            for status_value, record_ids in status_groups.items():
+                sql = f"""
+                UPDATE `{table_id}`
+                SET
+                    cleaning_status = @status,
+                    cleaning_updated_at = @updated_at
+                WHERE ragic_id IN UNNEST(@record_ids)
+                """
+
+                params = {
+                    "status": status_value,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "record_ids": record_ids,
+                }
+
+                try:
+                    result = self.bq_client.query(sql, params)
+                    # BigQuery UPDATE returns num_dml_affected_rows
+                    if hasattr(result, 'num_dml_affected_rows'):
+                        updated_count += result.num_dml_affected_rows
+                    else:
+                        updated_count += len(record_ids)
+
+                    logger.debug(
+                        f"Updated {len(record_ids)} records in {bq_table} "
+                        f"to status '{status_value}'"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to update {bq_table} records to '{status_value}': {e}"
+                    )
+
+            logger.info(
+                f"Table {table_code}: updated {updated_count} records' cleaning_status"
+            )
+            return updated_count
+
+        except Exception as e:
+            logger.error(f"Failed to update sheet cleaning status: {e}")
+            return 0
 
 
 # =============================================================================
