@@ -65,11 +65,10 @@ class Notifier:
         # Query actual stats from BigQuery instead of using memory counts
         bq_stats = self._query_batch_stats(batch.id)
 
-        # Only skip notification if nothing to report
+        # Only notify when manual intervention is required
         pending = bq_stats.get("pending_count", 0)
-        filtered = bq_stats.get("filtered_count", 0)
-        if pending == 0 and filtered == 0:
-            logger.info("No pending/filtered items (from BigQuery), skipping notification")
+        if pending == 0:
+            logger.info("No pending items requiring manual review, skipping notification")
             return True
 
         context = {
