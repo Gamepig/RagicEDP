@@ -126,9 +126,12 @@ class IncrementalBackup:
                     'duration': duration,
                 }
 
-            # Step 3: 初步清洗
-            valid_records, filtered_count = self._filter_records(records, sheet_code)
-            logger.info(f"After filtering: {len(valid_records)} valid, {filtered_count} filtered")
+            # Step 3: 不再過濾，RAW DATA 全部寫入 BigQuery
+            # 過濾邏輯已移至清洗流程 (Phase 5: _filter_invalid_records)
+            # 原呼叫：valid_records, filtered_count = self._filter_records(records, sheet_code)
+            valid_records = records
+            filtered_count = 0
+            logger.info(f"RAW DATA mode: {len(valid_records)} records (no filtering)")
 
             if not valid_records:
                 duration = time.time() - start_time

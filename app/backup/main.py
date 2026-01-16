@@ -68,10 +68,22 @@ def backup_erp_data(request: Request):
 
         # 備份成功後直接執行資料清洗
         skip_cleaning = request_json.get('skip_cleaning', False)
+        skip_etl = request_json.get('skip_etl', False)
+
         if not skip_cleaning and result.get('failed_count', 0) == 0:
             logger.info("Backup completed successfully, starting data cleaning...")
             cleaning_result = _execute_cleaning(backup_date=get_taipei_today())
             result['cleaning'] = cleaning_result
+
+            # 清洗成功後執行 ETL (同步到星狀模型)
+            if not skip_etl and cleaning_result.get('status') != 'error':
+                logger.info("Cleaning completed, starting ETL to star schema...")
+                etl_result = _execute_etl(since_date=get_taipei_today())
+                result['etl'] = etl_result
+            elif skip_etl:
+                logger.info("ETL skipped by request")
+            else:
+                logger.warning("ETL skipped due to cleaning failure")
         elif skip_cleaning:
             logger.info("Cleaning skipped by request")
         else:
@@ -177,6 +189,60 @@ def _execute_cleaning(backup_date: date, send_notification: bool = True) -> dict
             'status': 'error',
             'error': str(e),
         }
+
+
+def _execute_etl(since_date: date | None = None) -> dict:
+    """
+    內部 ETL 執行函數 (同步清洗後資料到星狀模型)
+
+    Args:
+        since_date: ETL 起始日期
+
+    Returns:
+        ETL 結果字典
+    """
+    logger.info("=" * 60)
+    logger.info("Star Schema ETL - Starting (Internal)")
+    logger.info("=" * 60)
+
+    try:
+        from ..etl.star_schema_etl import run_star_schema_etl
+
+        result = run_star_schema_etl(
+            mode='incremental',
+            since_date=since_date,
+            create_tables=True,
+        )
+
+        _log_etl_summary(result)
+        return result
+
+    except Exception as e:
+        logger.error(f"ETL failed: {type(e).__name__}: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+        }
+
+
+def _log_etl_summary(result: dict):
+    """記錄 ETL 摘要"""
+    logger.info("=" * 60)
+    logger.info("ETL Summary")
+    logger.info("=" * 60)
+    logger.info(f"Since date: {result.get('since_date', 'N/A')}")
+    logger.info(f"Duration: {result.get('duration_seconds', 0):.2f}s")
+    logger.info(f"Total rows: {result.get('total_rows', 0)}")
+
+    if result.get('tables'):
+        for table_name, table_result in result['tables'].items():
+            status = table_result.get('status', 'unknown')
+            rows = table_result.get('rows_affected', 0)
+            logger.info(f"  {table_name}: {status} ({rows} rows)")
+
+    if result.get('errors'):
+        logger.warning(f"Errors: {result['errors']}")
+    logger.info("=" * 60)
 
 
 # ============================================================

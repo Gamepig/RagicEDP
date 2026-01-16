@@ -309,8 +309,12 @@ class RuleRegistry:
             # Also check for .yml extension
             rule_files = list(self.rules_dir.glob("*.yml"))
 
-        # Exclude schema.yaml and fill_rules.yaml (has separate loader)
-        rule_files = [f for f in rule_files if f.name not in ("schema.yaml", "fill_rules.yaml")]
+        # Exclude non-cleaning rule files
+        # - schema.yaml: schema definition
+        # - fill_rules.yaml: has separate loader
+        # - invalid_data_rules.yaml: data quality rules, not cleaning rules
+        excluded_files = ("schema.yaml", "fill_rules.yaml", "invalid_data_rules.yaml")
+        rule_files = [f for f in rule_files if f.name not in excluded_files]
 
         total_loaded = 0
         for rule_file in rule_files:

@@ -143,7 +143,7 @@ SHEET_CONFIG: Dict[str, Dict[str, Any]] = {
         'last_modified_field': '最後修改日期',
         'key_fields': {
             'order_code': '訂單編號',
-            # customer_code 已移除: 訂單表無此欄位
+            'customer_code': '客戶編號',  # 修復: Ragic JSON 中確實有此欄位
             'order_date': '訂單成立日期',  # 修正: 原 '訂單日期'
             'order_amount': '訂單實收',    # 修正: 原 '訂單金額'
         },

@@ -31,7 +31,19 @@ DEFAULT_CONFIG = {
         "BQ_DATASET": {"correct_name": "BQ_DATASET", "default_value": "erp_backup"},
     },
     "cleaning_status": {
-        "valid_values": [None, "pending", "processing", "completed", "auto_fixed", "ai_fixed", "manual", "failed"]
+        "valid_values": [None, "pending", "processing", "completed", "auto_fixed", "ai_fixed", "manual", "filtered", "failed"]
+    },
+    "primary_keys": {
+        "10": {"field": "品牌編號", "json_path": "品牌編號", "ragic_field": "1000942"},
+        "20": {"field": "通路編號", "json_path": "通路編號", "ragic_field": "1000921"},
+        "30": {"field": "金流編號", "json_path": "金流編號", "ragic_field": "1000954"},
+        "40": {"field": "物流編號", "json_path": "物流編號", "ragic_field": "1000736"},
+        "41": {"field": "郵遞區號", "json_path": "郵遞區號", "ragic_field": "1000964"},
+        "50": {"field": "訂單編號", "json_path": "訂單編號", "ragic_field": "1000976"},
+        "60": {"field": "客戶編號", "json_path": "客戶編號", "ragic_field": "1000710"},
+        "70": {"field": "商品編號", "json_path": "商品編號", "ragic_field": "1000998"},
+        "80": {"field": "活動編號", "json_path": "活動編號", "ragic_field": "1001019"},
+        "99": {"field": "訂單編號,商品編號", "json_path": "訂單編號,商品編號", "ragic_field": "1000976,1000998", "composite": True},
     },
     "ai_models": {
         "openrouter": {
@@ -130,6 +142,45 @@ class SymbolConfig:
         if code_str not in sheets:
             raise KeyError(f"Unknown sheet code: {code_str}")
         return sheets[code_str]
+
+    # =========================================================================
+    # Primary Key Methods
+    # =========================================================================
+
+    def get_primary_key(self, code: str | int) -> dict[str, Any] | None:
+        """Get primary key info for sheet code.
+
+        Args:
+            code: Sheet code (e.g., "50" or 50)
+
+        Returns:
+            Dict with keys: field, json_path, ragic_field, composite (optional)
+            Returns None if no primary key defined
+
+        Example:
+            >>> config.get_primary_key("50")
+            {"field": "訂單編號", "json_path": "訂單編號", "ragic_field": "1000976"}
+            >>> config.get_primary_key("99")
+            {"field": "訂單編號,商品編號", "json_path": "訂單編號,商品編號",
+             "ragic_field": "1000976,1000998", "composite": True}
+        """
+        primary_keys = self._config.get("primary_keys", {})
+        code_str = str(code)
+        return primary_keys.get(code_str)
+
+    def is_composite_key(self, code: str | int) -> bool:
+        """Check if sheet has composite primary key.
+
+        Args:
+            code: Sheet code
+
+        Returns:
+            True if composite key (e.g., 99 table needs both 訂單編號 and 商品編號)
+        """
+        pk_info = self.get_primary_key(code)
+        if pk_info is None:
+            return False
+        return pk_info.get("composite", False)
 
     # =========================================================================
     # Secret Methods

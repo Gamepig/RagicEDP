@@ -12,6 +12,7 @@ from typing import Any
 from loguru import logger
 
 from app.cleaning.models import CleaningBatch
+from app.utils.bq_client import get_bq_client
 from app.notification.email_sender import EmailSender, get_email_sender
 from app.notification.line_messaging_sender import (
     LineMessagingSender,
@@ -61,37 +62,130 @@ class Notifier:
         if batch.status == "failed":
             return self._notify_batch_failed(batch)
 
+        # Query actual stats from BigQuery instead of using memory counts
+        bq_stats = self._query_batch_stats(batch.id)
+
         # Only notify if there are pending items
-        if batch.manual_count == 0:
-            logger.info("No pending items, skipping notification")
+        if bq_stats.get("pending_count", 0) == 0:
+            logger.info("No pending items (from BigQuery), skipping notification")
             return True
 
         context = {
             "batch_id": batch.id,
-            "processed_records": batch.processed_records,
-            "auto_fixed_count": batch.auto_fixed_count,
-            "ai_fixed_count": batch.ai_fixed_count,
-            "manual_count": batch.manual_count,
+            "processed_records": bq_stats.get("total_records", 0),
+            "auto_fixed_count": bq_stats.get("auto_fixed_count", 0),
+            "ai_fixed_count": bq_stats.get("ai_fixed_count", 0),
+            "manual_count": bq_stats.get("pending_count", 0),
+            "filtered_count": bq_stats.get("filtered_count", 0),
         }
 
         # Send Email
         email_ok = self.email_sender.send_template("cleaning_summary", context)
 
         # Send LINE
-        line_msg = self._format_batch_complete_line(batch)
+        line_msg = self._format_batch_complete_line(bq_stats, batch.id)
         line_ok = self.line_sender.send(line_msg)
 
         return email_ok or line_ok
 
-    def _format_batch_complete_line(self, batch: CleaningBatch) -> str:
-        """Format batch completion message for LINE."""
+    def _query_batch_stats(self, batch_id: str) -> dict[str, int]:
+        """Query batch statistics from BigQuery.
+
+        Queries all sheet tables to get actual cleaning status counts.
+        This replaces in-memory batch counts with persisted data.
+
+        Args:
+            batch_id: Batch ID to query
+
+        Returns:
+            Stats dict with: total_records, auto_fixed_count, ai_fixed_count,
+                           pending_count, filtered_count
+        """
+        stats = {
+            "total_records": 0,
+            "auto_fixed_count": 0,
+            "ai_fixed_count": 0,
+            "pending_count": 0,
+            "filtered_count": 0,
+        }
+
+        try:
+            bq_client = get_bq_client()
+
+            # Query cleaning status from all sheet tables
+            # Uses UNION ALL across all tables with cleaning_batch_id filter
+            tables = [
+                "sheet_10_brand", "sheet_20_channel", "sheet_30_payment",
+                "sheet_40_logistics", "sheet_41_zipcode", "sheet_50_order",
+                "sheet_60_customer", "sheet_70_product", "sheet_80_campaign",
+                "sheet_99_order_detail",
+            ]
+
+            union_parts = []
+            for table in tables:
+                union_parts.append(f"""
+                    SELECT
+                        cleaning_status,
+                        is_filtered
+                    FROM `{{project}}.{{dataset}}.{table}`
+                    WHERE cleaning_batch_id = @batch_id
+                """)
+
+            sql = f"""
+            WITH all_records AS (
+                {' UNION ALL '.join(union_parts)}
+            )
+            SELECT
+                COUNT(*) as total_records,
+                COUNTIF(cleaning_status = 'auto_fixed') as auto_fixed_count,
+                COUNTIF(cleaning_status = 'ai_fixed') as ai_fixed_count,
+                COUNTIF(cleaning_status = 'manual') as pending_count,
+                COUNTIF(is_filtered = TRUE OR cleaning_status = 'filtered') as filtered_count
+            FROM all_records
+            """
+
+            result = bq_client.query_to_list(sql, {"batch_id": batch_id})
+            if result:
+                stats = {
+                    "total_records": result[0].get("total_records", 0) or 0,
+                    "auto_fixed_count": result[0].get("auto_fixed_count", 0) or 0,
+                    "ai_fixed_count": result[0].get("ai_fixed_count", 0) or 0,
+                    "pending_count": result[0].get("pending_count", 0) or 0,
+                    "filtered_count": result[0].get("filtered_count", 0) or 0,
+                }
+
+            logger.debug(f"Batch {batch_id} stats from BigQuery: {stats}")
+
+        except Exception as e:
+            logger.warning(f"Failed to query batch stats from BigQuery: {e}")
+            # Return empty stats on failure, notification will be skipped
+
+        return stats
+
+    def _format_batch_complete_line(self, stats: dict[str, int], batch_id: str) -> str:
+        """Format batch completion message for LINE.
+
+        Args:
+            stats: Statistics dict from BigQuery
+            batch_id: Batch ID
+
+        Returns:
+            Formatted LINE message
+        """
+        pending = stats.get("pending_count", 0)
+        filtered = stats.get("filtered_count", 0)
+
+        # Only show filtered line if there are filtered records
+        filtered_line = f"已過濾: {filtered}\n" if filtered > 0 else ""
+
         return (
             f"📊 [RagicEDP] 資料清洗完成\n\n"
-            f"批次 ID: {batch.id}\n"
-            f"處理記錄: {batch.processed_records}\n"
-            f"自動修正: {batch.auto_fixed_count}\n"
-            f"AI 修正: {batch.ai_fixed_count}\n"
-            f"待人工處理: {batch.manual_count}\n\n"
+            f"批次 ID: {batch_id}\n"
+            f"處理記錄: {stats.get('total_records', 0)}\n"
+            f"自動修正: {stats.get('auto_fixed_count', 0)}\n"
+            f"AI 修正: {stats.get('ai_fixed_count', 0)}\n"
+            f"{filtered_line}"
+            f"待人工處理: {pending}\n\n"
             f"🔗 {self.app_url}"
         )
 

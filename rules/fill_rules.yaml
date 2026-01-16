@@ -28,7 +28,7 @@ rules:
     target_field_id: null  # 待確認欄位 ID
     source: order_detail_calculation
     trigger:
-      condition: "首購品牌 IS NULL OR 首購品牌 = ''"
+      condition: "JSON_VALUE(data, '$.首購品牌') IS NULL OR JSON_VALUE(data, '$.首購品牌') = ''"
     fill_logic:
       type: sql_query
       query: |
@@ -54,7 +54,7 @@ rules:
     target_field_id: null
     source: order_detail_calculation
     trigger:
-      condition: "來源通路 IS NULL OR 來源通路 = ''"
+      condition: "JSON_VALUE(data, '$.來源通路') IS NULL OR JSON_VALUE(data, '$.來源通路') = ''"
     fill_logic:
       type: sql_query
       query: |
@@ -80,7 +80,7 @@ rules:
     target_field_id: null
     source: order_detail_calculation
     trigger:
-      condition: always  # 每次都更新
+      condition: "TRUE"  # 每次都更新
     fill_logic:
       type: sql_query
       query: |
@@ -104,7 +104,7 @@ rules:
     target_field_id: null
     source: order_detail_calculation
     trigger:
-      condition: always
+      condition: "TRUE"  # 每次都更新
     fill_logic:
       type: sql_query
       query: |
@@ -128,7 +128,7 @@ rules:
     target_field_id: null
     source: order_detail_calculation
     trigger:
-      condition: "首購日期 IS NULL OR 首購日期 = ''"
+      condition: "JSON_VALUE(data, '$.首購日期') IS NULL OR JSON_VALUE(data, '$.首購日期') = ''"
     fill_logic:
       type: sql_query
       query: |
@@ -152,7 +152,7 @@ rules:
     target_field_id: null
     source: order_detail_calculation
     trigger:
-      condition: always
+      condition: "TRUE"  # 每次都更新
     fill_logic:
       type: sql_query
       query: |
@@ -176,7 +176,7 @@ rules:
     target_field_id: null
     source: order_detail_calculation
     trigger:
-      condition: always
+      condition: "TRUE"  # 每次都更新
     fill_logic:
       type: sql_query
       query: |
@@ -205,7 +205,7 @@ rules:
     target_field: price
     target_field_id: null
     trigger:
-      condition: "price IS NULL AND (商品名稱 LIKE '%贈品%' OR 商品名稱 LIKE '%活動%')"
+      condition: "price IS NULL AND (JSON_VALUE(data, '$.商品名稱') LIKE '%贈品%' OR JSON_VALUE(data, '$.商品名稱') LIKE '%活動%')"
     source:
       type: constant
       value: 0
@@ -446,7 +446,7 @@ rules:
     target_field: subtotal
     target_field_id: null
     trigger:
-      condition: "subtotal IS NULL AND quantity IS NOT NULL AND unit_price IS NOT NULL"
+      condition: "JSON_VALUE(data, '$.小計') IS NULL AND JSON_VALUE(data, '$.數量') IS NOT NULL AND JSON_VALUE(data, '$.單價') IS NOT NULL"
     source:
       type: compute
       formula: "quantity * unit_price"

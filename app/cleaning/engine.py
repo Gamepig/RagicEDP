@@ -60,7 +60,9 @@ class CleaningEngine:
 
         # Configuration
         self.batch_size = int(os.environ.get("CLEANING_BATCH_SIZE", "100"))
-        self.max_records = int(os.environ.get("CLEANING_MAX_RECORDS", "10000"))
+        # 降低預設值避免記憶體溢出和過多 BQ 查詢
+        # 每筆 AutoFillRule 都會執行獨立查詢，10000 筆 = 10000 次查詢
+        self.max_records = int(os.environ.get("CLEANING_MAX_RECORDS", "1000"))
         self.enable_auto_fill = os.environ.get("ENABLE_AUTO_FILL", "true").lower() == "true"
         self.enable_ai = os.environ.get("ENABLE_AI_ANALYSIS", "true").lower() == "true"
         self.enable_notifications = os.environ.get("ENABLE_NOTIFICATIONS", "true").lower() == "true"
@@ -173,9 +175,11 @@ class CleaningEngine:
 
         處理順序（重要）：
         1. Phase 1: Auto-fill - 先從關聯表回填缺失欄位
-        2. Phase 2: Validation - 再驗證資料（此時已有回填資料）
-        3. Phase 3: Auto-fix - 自動修復格式問題
-        4. Phase 4: AI Analysis - AI 分析無法自動修復的問題
+        2. Phase 2.5: Data Fix - 修正資料異常（如未來時間戳）
+        3. Phase 2: Validation - 再驗證資料（此時已有回填資料）
+        4. Phase 3: Auto-fix - 自動修復格式問題
+        5. Phase 4: AI Analysis - AI 分析無法自動修復的問題
+        6. Phase 5: Filter - 過濾無法使用的記錄（最後執行）
 
         Args:
             batch: Current batch
@@ -194,6 +198,8 @@ class CleaningEngine:
             "ai_fixed": 0,
             "auto_filled": 0,
             "pending_manual": 0,
+            "data_fixed": 0,
+            "filtered": 0,
         }
 
         try:
@@ -215,7 +221,17 @@ class CleaningEngine:
 
                 logger.info(f"Table {table_code}: auto_filled={auto_filled}")
 
-            # Phase 2: SQL Validation (after auto-fill)
+            # Phase 2.5: Fix data issues (e.g., future timestamps)
+            # 嘗試修正異常資料，無法修正的會被標記 filter_reason
+            data_fix_stats = self._fix_data_issues(table_code, batch.id)
+            stats["data_fixed"] = data_fix_stats.get("fixed_count", 0)
+            if data_fix_stats.get("future_records_found", 0) > 0:
+                logger.info(
+                    f"Table {table_code}: data_fix found={data_fix_stats['future_records_found']}, "
+                    f"fixed={data_fix_stats['fixed_count']}, unfixable={data_fix_stats['unfixable_count']}"
+                )
+
+            # Phase 2: SQL Validation (after auto-fill and data fix)
             # 回填後再驗證，避免對可自動回填的欄位產生假違規
             violations = self.sql_cleaner.validate_table(
                 table_code, record_ids, limit=self.max_records
@@ -285,12 +301,24 @@ class CleaningEngine:
             # Write results
             self._write_results(batch, table_code, fixed_violations, histories, fill_results)
 
+            # Phase 5: Filter invalid records (executed LAST)
+            # 過濾無效記錄：缺少主鍵、無法修正的異常資料等
+            filter_stats = self._filter_invalid_records(table_code, batch.id)
+            stats["filtered"] = filter_stats.get("filtered_count", 0)
+            if filter_stats.get("filtered_count", 0) > 0:
+                logger.info(
+                    f"Table {table_code}: filtered {filter_stats['filtered_count']} records "
+                    f"(reasons: {filter_stats.get('reasons', {})})"
+                )
+
             logger.info(
                 f"Table {table_code}: "
                 f"violations={len(violations)}, "
                 f"auto_fixed={stats['auto_fixed']}, "
                 f"ai_fixed={stats['ai_fixed']}, "
                 f"auto_filled={stats['auto_filled']}, "
+                f"data_fixed={stats['data_fixed']}, "
+                f"filtered={stats['filtered']}, "
                 f"pending={stats['pending_manual']}"
             )
 
@@ -369,6 +397,315 @@ class CleaningEngine:
             return CleaningStatus.AUTO_FIXED
 
         return CleaningStatus.COMPLETED
+
+    def _fix_data_issues(self, table_code: str, batch_id: str) -> dict[str, Any]:
+        """Phase 2.5: Fix data issues like future timestamps.
+
+        Attempts to fix records with anomalous data before filtering:
+        1. Find records where _ragicModifiedTime > current time
+        2. For orders (table 50), try to get earliest time from order_details (table 99)
+        3. Mark unfixable records with filter_reason
+
+        Args:
+            table_code: Table code to process
+            batch_id: Current batch ID
+
+        Returns:
+            Stats dict: {future_records_found, fixed_count, unfixable_count}
+        """
+        stats = {
+            "future_records_found": 0,
+            "fixed_count": 0,
+            "unfixable_count": 0,
+        }
+
+        try:
+            table_name = self.symbol_config.get_sheet_table(table_code)
+        except KeyError:
+            logger.warning(f"Unknown table code: {table_code}")
+            return stats
+
+        bq_client = self.sql_cleaner.bq_client
+        full_table = f"`{bq_client.project_id}.{bq_client.dataset}.{table_name}`"
+
+        # Step 1: Find records with future timestamps
+        find_future_sql = f"""
+        SELECT
+            _sn,
+            JSON_VALUE(data, '$._ragicId') as ragic_id,
+            JSON_VALUE(data, '$._ragicModifiedTime') as modified_time
+        FROM {full_table}
+        WHERE SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S',
+                JSON_VALUE(data, '$._ragicModifiedTime')) > CURRENT_TIMESTAMP()
+          AND (is_filtered IS NULL OR is_filtered = FALSE)
+        """
+
+        try:
+            future_records = list(bq_client.query(find_future_sql).result())
+            stats["future_records_found"] = len(future_records)
+
+            if not future_records:
+                logger.info(f"Table {table_code}: No future timestamp records found")
+                return stats
+
+            logger.info(
+                f"Table {table_code}: Found {len(future_records)} records with future timestamps"
+            )
+
+            # Step 2: Try to fix from related tables (only for order table 50)
+            if table_code == "50":
+                fixed_sns = self._fix_order_timestamps_from_details(
+                    bq_client, full_table, future_records, batch_id
+                )
+                stats["fixed_count"] = len(fixed_sns)
+
+                # Mark remaining as unfixable
+                unfixable_sns = [r._sn for r in future_records if r._sn not in fixed_sns]
+            else:
+                # For other tables, all future timestamp records are unfixable
+                unfixable_sns = [r._sn for r in future_records]
+
+            # Step 3: Mark unfixable records
+            if unfixable_sns:
+                mark_unfixable_sql = f"""
+                UPDATE {full_table}
+                SET filter_reason = 'future_timestamp_unfixable',
+                    cleaning_batch_id = @batch_id
+                WHERE _sn IN UNNEST(@sns)
+                """
+                bq_client.query(mark_unfixable_sql, {"batch_id": batch_id, "sns": unfixable_sns}).result()
+                stats["unfixable_count"] = len(unfixable_sns)
+
+                logger.info(
+                    f"Table {table_code}: Marked {len(unfixable_sns)} records as unfixable"
+                )
+
+        except Exception as e:
+            logger.error(f"Error fixing data issues for table {table_code}: {e}")
+            stats["error"] = str(e)
+
+        return stats
+
+    def _fix_order_timestamps_from_details(
+        self,
+        bq_client,
+        order_table: str,
+        future_records: list,
+        batch_id: str,
+    ) -> set[int]:
+        """Fix order timestamps using earliest detail timestamp.
+
+        Args:
+            bq_client: BigQuery client
+            order_table: Full order table name
+            future_records: List of records with future timestamps
+            batch_id: Current batch ID
+
+        Returns:
+            Set of _sn values that were successfully fixed
+        """
+        fixed_sns = set()
+        try:
+            detail_table_name = self.symbol_config.get_sheet_table("99")
+        except KeyError:
+            return fixed_sns
+
+        detail_table = f"`{bq_client.project_id}.{bq_client.dataset}.{detail_table_name}`"
+
+        for record in future_records:
+            try:
+                # Get order number from the order record
+                get_order_no_sql = f"""
+                SELECT JSON_VALUE(data, '$.訂單編號') as order_no
+                FROM {order_table}
+                WHERE _sn = @sn
+                """
+                order_result = list(bq_client.query(get_order_no_sql, {"sn": record._sn}).result())
+
+                if not order_result or not order_result[0].order_no:
+                    continue
+
+                order_no = order_result[0].order_no
+
+                # Find earliest modified time from order details
+                find_earliest_sql = f"""
+                SELECT MIN(SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S',
+                    JSON_VALUE(data, '$._ragicModifiedTime'))) as earliest_time
+                FROM {detail_table}
+                WHERE JSON_VALUE(data, '$.訂單編號') = @order_no
+                  AND SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S',
+                      JSON_VALUE(data, '$._ragicModifiedTime')) <= CURRENT_TIMESTAMP()
+                """
+                detail_result = list(bq_client.query(find_earliest_sql, {"order_no": order_no}).result())
+
+                if not detail_result or not detail_result[0].earliest_time:
+                    continue
+
+                earliest_time = detail_result[0].earliest_time
+
+                # Update order with the fixed timestamp using string format
+                # Note: BigQuery JSON_SET returns JSON type, need TO_JSON_STRING
+                formatted_time = earliest_time.strftime("%Y-%m-%d %H:%M:%S")
+                fix_sql = f"""
+                UPDATE {order_table}
+                SET data = TO_JSON_STRING(
+                    JSON_SET(
+                        PARSE_JSON(data),
+                        '$._ragicModifiedTime',
+                        @fixed_time
+                    )
+                ),
+                cleaning_batch_id = @batch_id
+                WHERE _sn = @sn
+                """
+                bq_client.query(fix_sql, {
+                    "fixed_time": formatted_time,
+                    "batch_id": batch_id,
+                    "sn": record._sn,
+                }).result()
+
+                fixed_sns.add(record._sn)
+                logger.debug(f"Fixed order _sn={record._sn} with time from details")
+
+            except Exception as e:
+                logger.warning(f"Failed to fix order _sn={record._sn}: {e}")
+                continue
+
+        return fixed_sns
+
+    def _filter_invalid_records(self, table_code: str, batch_id: str) -> dict[str, Any]:
+        """Phase 5: Filter records that cannot be used for analysis.
+
+        Marks records as filtered when:
+        1. Primary key is missing (null or empty)
+        2. Has unfixable data issues (filter_reason already set)
+
+        Args:
+            table_code: Table code to process
+            batch_id: Current batch ID
+
+        Returns:
+            Stats dict: {total_checked, filtered_count, reasons}
+        """
+        stats = {
+            "total_checked": 0,
+            "filtered_count": 0,
+            "reasons": {},
+        }
+
+        try:
+            table_name = self.symbol_config.get_sheet_table(table_code)
+        except KeyError:
+            logger.warning(f"Unknown table code: {table_code}")
+            return stats
+
+        pk_info = self.symbol_config.get_primary_key(table_code)
+        if not pk_info:
+            logger.warning(f"No primary key config for table {table_code}")
+            return stats
+
+        bq_client = self.sql_cleaner.bq_client
+        full_table = f"`{bq_client.project_id}.{bq_client.dataset}.{table_name}`"
+
+        # Build primary key check condition
+        if pk_info.get("composite", False):
+            # Composite key: all parts must be non-empty
+            pk_fields = pk_info["json_path"].split(",")
+            pk_conditions = " OR ".join([
+                f"(JSON_VALUE(data, '$.{field.strip()}') IS NULL OR "
+                f"TRIM(JSON_VALUE(data, '$.{field.strip()}')) = '')"
+                for field in pk_fields
+            ])
+        else:
+            # Single key
+            pk_field = pk_info["json_path"]
+            pk_conditions = (
+                f"(JSON_VALUE(data, '$.{pk_field}') IS NULL OR "
+                f"TRIM(JSON_VALUE(data, '$.{pk_field}')) = '')"
+            )
+
+        try:
+            # Count total unflagged records
+            count_sql = f"""
+            SELECT COUNT(*) as cnt
+            FROM {full_table}
+            WHERE is_filtered IS NULL OR is_filtered = FALSE
+            """
+            count_result = list(bq_client.query(count_sql).result())
+            stats["total_checked"] = count_result[0].cnt if count_result else 0
+
+            # Filter 1: Missing primary key
+            filter_pk_sql = f"""
+            UPDATE {full_table}
+            SET is_filtered = TRUE,
+                filter_reason = 'missing_primary_key',
+                cleaning_batch_id = @batch_id
+            WHERE (is_filtered IS NULL OR is_filtered = FALSE)
+              AND ({pk_conditions})
+            """
+            pk_job = bq_client.query(filter_pk_sql, {"batch_id": batch_id})
+            pk_job.result()
+            pk_filtered = pk_job.num_dml_affected_rows or 0
+            stats["reasons"]["missing_primary_key"] = pk_filtered
+
+            # Filter 2: Records already marked with filter_reason (e.g., from Phase 2.5)
+            filter_reason_sql = f"""
+            UPDATE {full_table}
+            SET is_filtered = TRUE,
+                cleaning_batch_id = @batch_id
+            WHERE (is_filtered IS NULL OR is_filtered = FALSE)
+              AND filter_reason IS NOT NULL
+            """
+            reason_job = bq_client.query(filter_reason_sql, {"batch_id": batch_id})
+            reason_job.result()
+            reason_filtered = reason_job.num_dml_affected_rows or 0
+            stats["reasons"]["had_filter_reason"] = reason_filtered
+
+            stats["filtered_count"] = pk_filtered + reason_filtered
+
+            logger.info(
+                f"Table {table_code}: Filtered {stats['filtered_count']} records "
+                f"(pk_missing={pk_filtered}, had_reason={reason_filtered})"
+            )
+
+            # Update sheet table cleaning_status for filtered records
+            if stats["filtered_count"] > 0:
+                self._update_filtered_status(bq_client, full_table, table_code, batch_id)
+
+        except Exception as e:
+            logger.error(f"Error filtering records for table {table_code}: {e}")
+            stats["error"] = str(e)
+
+        return stats
+
+    def _update_filtered_status(
+        self,
+        bq_client,
+        full_table: str,
+        table_code: str,
+        batch_id: str,
+    ) -> None:
+        """Update cleaning_status to 'filtered' for filtered records.
+
+        Args:
+            bq_client: BigQuery client
+            full_table: Full table name
+            table_code: Table code
+            batch_id: Current batch ID
+        """
+        try:
+            update_status_sql = f"""
+            UPDATE {full_table}
+            SET cleaning_status = 'filtered'
+            WHERE is_filtered = TRUE
+              AND cleaning_batch_id = @batch_id
+              AND (cleaning_status IS NULL OR cleaning_status != 'filtered')
+            """
+            bq_client.query(update_status_sql, {"batch_id": batch_id}).result()
+            logger.debug(f"Updated cleaning_status for filtered records in table {table_code}")
+
+        except Exception as e:
+            logger.warning(f"Failed to update cleaning_status for table {table_code}: {e}")
 
 
 # =============================================================================
