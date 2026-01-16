@@ -65,9 +65,11 @@ class Notifier:
         # Query actual stats from BigQuery instead of using memory counts
         bq_stats = self._query_batch_stats(batch.id)
 
-        # Only notify if there are pending items
-        if bq_stats.get("pending_count", 0) == 0:
-            logger.info("No pending items (from BigQuery), skipping notification")
+        # Only skip notification if nothing to report
+        pending = bq_stats.get("pending_count", 0)
+        filtered = bq_stats.get("filtered_count", 0)
+        if pending == 0 and filtered == 0:
+            logger.info("No pending/filtered items (from BigQuery), skipping notification")
             return True
 
         context = {
@@ -92,10 +94,12 @@ class Notifier:
         """Query batch statistics from BigQuery.
 
         Queries all sheet tables to get actual cleaning status counts.
-        This replaces in-memory batch counts with persisted data.
+        Note: Does NOT filter by batch_id because cleaning_batch_id is not
+        consistently set by all cleaning operations. Instead, queries all
+        records with cleaning_status set (i.e., processed records).
 
         Args:
-            batch_id: Batch ID to query
+            batch_id: Batch ID (for logging only, not used in query)
 
         Returns:
             Stats dict with: total_records, auto_fixed_count, ai_fixed_count,
@@ -113,7 +117,8 @@ class Notifier:
             bq_client = get_bq_client()
 
             # Query cleaning status from all sheet tables
-            # Uses UNION ALL across all tables with cleaning_batch_id filter
+            # Note: Does NOT filter by cleaning_batch_id because it's not set
+            # by all operations. Instead, counts all processed records.
             tables = [
                 "sheet_10_brand", "sheet_20_channel", "sheet_30_payment",
                 "sheet_40_logistics", "sheet_41_zipcode", "sheet_50_order",
@@ -128,7 +133,7 @@ class Notifier:
                         cleaning_status,
                         is_filtered
                     FROM `{{project}}.{{dataset}}.{table}`
-                    WHERE cleaning_batch_id = @batch_id
+                    WHERE cleaning_status IS NOT NULL
                 """)
 
             sql = f"""
@@ -144,7 +149,7 @@ class Notifier:
             FROM all_records
             """
 
-            result = bq_client.query_to_list(sql, {"batch_id": batch_id})
+            result = bq_client.query_to_list(sql, {})
             if result:
                 stats = {
                     "total_records": result[0].get("total_records", 0) or 0,
@@ -154,7 +159,7 @@ class Notifier:
                     "filtered_count": result[0].get("filtered_count", 0) or 0,
                 }
 
-            logger.debug(f"Batch {batch_id} stats from BigQuery: {stats}")
+            logger.info(f"Batch {batch_id} stats from BigQuery: {stats}")
 
         except Exception as e:
             logger.warning(f"Failed to query batch stats from BigQuery: {e}")
