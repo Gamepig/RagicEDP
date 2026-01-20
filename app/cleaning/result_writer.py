@@ -723,6 +723,83 @@ class ResultWriter:
             logger.error(f"Failed to update sheet cleaning status: {e}")
             return 0
 
+    def fix_inconsistent_manual_status(
+        self,
+        table_code: str | None = None,
+    ) -> dict[str, int]:
+        """Fix records where cleaning_status='manual' but no pending violations exist.
+
+        This method addresses data inconsistency where:
+        - Sheet table has cleaning_status='manual'
+        - But violations table has no pending violations for that record
+
+        Such inconsistency can occur when:
+        1. AI fixes violations after status was determined
+        2. Manual corrections through data-correction-app
+        3. Violations were deleted or updated externally
+
+        Args:
+            table_code: Optional table code to fix. If None, fix all tables.
+
+        Returns:
+            Dict with table_code -> count of fixed records
+        """
+        symbol_config = get_symbol_config()
+        results: dict[str, int] = {}
+
+        # Get tables to process
+        if table_code:
+            table_codes = [table_code]
+        else:
+            table_codes = ["10", "20", "30", "40", "41", "50", "60", "70", "80", "99"]
+
+        for tc in table_codes:
+            try:
+                bq_table = symbol_config.get_sheet_table(tc)
+                table_id = self.bq_client.get_table_id(bq_table)
+                violations_table = self.bq_client.get_table_id(self.violations_table)
+
+                # Update records that are 'manual' but have no pending violations
+                sql = f"""
+                UPDATE `{table_id}` t
+                SET
+                    cleaning_status = 'completed',
+                    cleaning_updated_at = @updated_at
+                WHERE t.cleaning_status = 'manual'
+                  AND t.ragic_id NOT IN (
+                    SELECT DISTINCT record_id
+                    FROM `{violations_table}`
+                    WHERE table_code = @table_code
+                      AND (status IS NULL OR status = 'pending')
+                  )
+                """
+
+                params = {
+                    "table_code": tc,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+                result = self.bq_client.query(sql, params)
+                result.result()  # Wait for completion
+
+                affected = getattr(result, 'num_dml_affected_rows', None)
+                fixed_count = affected if isinstance(affected, int) else 0
+
+                if fixed_count > 0:
+                    results[tc] = fixed_count
+                    logger.info(
+                        f"Table {tc}: Fixed {fixed_count} inconsistent manual status records"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Failed to fix inconsistent status for table {tc}: {e}")
+
+        total_fixed = sum(results.values())
+        if total_fixed > 0:
+            logger.info(f"Total fixed inconsistent manual status records: {total_fixed}")
+
+        return results
+
 
 # =============================================================================
 # Module-level convenience functions

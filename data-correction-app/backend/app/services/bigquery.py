@@ -327,6 +327,34 @@ class BigQueryService:
         if result.num_dml_affected_rows == 0:
             raise ValueError(f"記錄 {record_id} 不存在或已被處理")
 
+        # 同步更新 violations 表中該記錄的所有 pending violations 為 'fixed'
+        # 確保 sheet 表與 violations 表的狀態一致性
+        try:
+            violations_update_query = f"""
+                UPDATE `{self.project_id}.{self.dataset}.violations`
+                SET
+                    status = 'fixed',
+                    fixed_at = @fixed_at,
+                    fixed_by = @fixed_by
+                WHERE table_code = @table_code
+                  AND record_id = @ragic_id
+                  AND (status IS NULL OR status = 'pending')
+            """
+            v_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("fixed_at", "TIMESTAMP", now),
+                    bigquery.ScalarQueryParameter("fixed_by", "STRING", corrected_by),
+                    bigquery.ScalarQueryParameter("table_code", "STRING", table_code),
+                    bigquery.ScalarQueryParameter("ragic_id", "STRING", ragic_id),
+                ]
+            )
+            v_result = self.client.query(violations_update_query, job_config=v_config).result()
+            violations_fixed = v_result.num_dml_affected_rows or 0
+            if violations_fixed > 0:
+                logger.info(f"已同步更新 {violations_fixed} 筆違規記錄為 fixed")
+        except Exception as e:
+            logger.warning(f"同步更新 violations 表失敗（不影響主要修正）: {e}")
+
         logger.info(f"已套用修正: record_id={record_id}, table={table_name}")
 
         return {

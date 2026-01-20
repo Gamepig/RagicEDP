@@ -111,6 +111,16 @@ class CleaningEngine:
         finally:
             self.result_writer.complete_batch(batch)
 
+            # Fix any inconsistent manual status records
+            # This ensures records marked as 'manual' but without pending violations
+            # are correctly updated to 'completed'
+            try:
+                fixed_counts = self.result_writer.fix_inconsistent_manual_status()
+                if fixed_counts:
+                    logger.info(f"Fixed inconsistent manual status: {fixed_counts}")
+            except Exception as e:
+                logger.warning(f"Failed to fix inconsistent manual status: {e}")
+
             # Send notification
             if self.enable_notifications:
                 try:
@@ -431,8 +441,7 @@ class CleaningEngine:
         # Step 1: Find records with future timestamps
         find_future_sql = f"""
         SELECT
-            _sn,
-            JSON_VALUE(data, '$._ragicId') as ragic_id,
+            ragic_id,
             JSON_VALUE(data, '$._ragicModifiedTime') as modified_time
         FROM {full_table}
         WHERE SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S',
@@ -454,30 +463,30 @@ class CleaningEngine:
 
             # Step 2: Try to fix from related tables (only for order table 50)
             if table_code == "50":
-                fixed_sns = self._fix_order_timestamps_from_details(
+                fixed_ids = self._fix_order_timestamps_from_details(
                     bq_client, full_table, future_records, batch_id
                 )
-                stats["fixed_count"] = len(fixed_sns)
+                stats["fixed_count"] = len(fixed_ids)
 
                 # Mark remaining as unfixable
-                unfixable_sns = [r._sn for r in future_records if r._sn not in fixed_sns]
+                unfixable_ids = [r.ragic_id for r in future_records if r.ragic_id not in fixed_ids]
             else:
                 # For other tables, all future timestamp records are unfixable
-                unfixable_sns = [r._sn for r in future_records]
+                unfixable_ids = [r.ragic_id for r in future_records]
 
             # Step 3: Mark unfixable records
-            if unfixable_sns:
+            if unfixable_ids:
                 mark_unfixable_sql = f"""
                 UPDATE {full_table}
                 SET filter_reason = 'future_timestamp_unfixable',
                     cleaning_batch_id = @batch_id
-                WHERE _sn IN UNNEST(@sns)
+                WHERE ragic_id IN UNNEST(@ids)
                 """
-                bq_client.query(mark_unfixable_sql, {"batch_id": batch_id, "sns": unfixable_sns}).result()
-                stats["unfixable_count"] = len(unfixable_sns)
+                bq_client.query(mark_unfixable_sql, {"batch_id": batch_id, "ids": unfixable_ids}).result()
+                stats["unfixable_count"] = len(unfixable_ids)
 
                 logger.info(
-                    f"Table {table_code}: Marked {len(unfixable_sns)} records as unfixable"
+                    f"Table {table_code}: Marked {len(unfixable_ids)} records as unfixable"
                 )
 
         except Exception as e:
@@ -502,13 +511,13 @@ class CleaningEngine:
             batch_id: Current batch ID
 
         Returns:
-            Set of _sn values that were successfully fixed
+            Set of ragic_id values that were successfully fixed
         """
-        fixed_sns = set()
+        fixed_ids = set()
         try:
             detail_table_name = self.symbol_config.get_sheet_table("99")
         except KeyError:
-            return fixed_sns
+            return fixed_ids
 
         detail_table = f"`{bq_client.project_id}.{bq_client.dataset}.{detail_table_name}`"
 
@@ -518,9 +527,9 @@ class CleaningEngine:
                 get_order_no_sql = f"""
                 SELECT JSON_VALUE(data, '$.訂單編號') as order_no
                 FROM {order_table}
-                WHERE _sn = @sn
+                WHERE ragic_id = @ragic_id
                 """
-                order_result = list(bq_client.query(get_order_no_sql, {"sn": record._sn}).result())
+                order_result = list(bq_client.query(get_order_no_sql, {"ragic_id": record.ragic_id}).result())
 
                 if not order_result or not order_result[0].order_no:
                     continue
@@ -556,22 +565,22 @@ class CleaningEngine:
                     )
                 ),
                 cleaning_batch_id = @batch_id
-                WHERE _sn = @sn
+                WHERE ragic_id = @ragic_id
                 """
                 bq_client.query(fix_sql, {
                     "fixed_time": formatted_time,
                     "batch_id": batch_id,
-                    "sn": record._sn,
+                    "ragic_id": record.ragic_id,
                 }).result()
 
-                fixed_sns.add(record._sn)
-                logger.debug(f"Fixed order _sn={record._sn} with time from details")
+                fixed_ids.add(record.ragic_id)
+                logger.debug(f"Fixed order ragic_id={record.ragic_id} with time from details")
 
             except Exception as e:
-                logger.warning(f"Failed to fix order _sn={record._sn}: {e}")
+                logger.warning(f"Failed to fix order ragic_id={record.ragic_id}: {e}")
                 continue
 
-        return fixed_sns
+        return fixed_ids
 
     def _filter_invalid_records(self, table_code: str, batch_id: str) -> dict[str, Any]:
         """Phase 5: Filter records that cannot be used for analysis.
