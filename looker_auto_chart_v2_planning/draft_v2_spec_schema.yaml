@@ -1,0 +1,47 @@
+# Looker Studio V2 Spec Schema (Draft)
+
+spec_version: "2.0"
+
+# 報表級別全域配置
+global_config:
+  project_id: "b25h01-ragic"
+  dataset_id: "erp_backup"
+  billing_project_id: "b25h01-ragic"
+  default_template_report_id: "d9e8d363-e173-434e-8743-59b77a5ed62c"
+
+# 圖表規格清單
+charts:
+  - id: "01"
+    name: "本月每日銷售趨勢"
+    template_type: "TS" # TimeSeries
+    datasource:
+      type: "TABLE"
+      table_name: "ls_v_01_daily_revenue_poc"
+      # 強制欄位契約：在執行前驗證 BQ 欄位
+      contract:
+        dimension: "order_date"
+        metric: "revenue"
+        # 預期型別驗證
+        schema_validation:
+          order_date: "DATE"
+          revenue: "FLOAT64"
+    layout:
+      page_index: 0
+      position: "auto" # 由腳本自動計算 y 軸偏移避免重疊
+    idempotency:
+      # 更新模式：page (更新整頁), chart (更新特定圖表物件)
+      update_mode: "page"
+      unique_tag: "__CHART_ID_01__"
+
+  - id: "02"
+    name: "昨日銷售 Top 10 品牌"
+    template_type: "BAR"
+    datasource:
+      type: "TABLE"
+      table_name: "ls_v_02_top_10_brands_yesterday"
+      contract:
+        dimension: "brand_name"
+        metric: "revenue"
+    layout:
+      page_index: 1
+      position: "top"

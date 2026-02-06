@@ -1,0 +1,9 @@
+{
+  "project_id": "b25h01-ragic",
+  "dashboard_id": "252aa031-1fce-4c5f-b673-1849c3ee529e",
+  "dashboard_name": "RagicEDP | 01 | 本月每日銷售趨勢",
+  "dashboard_dataset": "erp_backup",
+  "dashboard_datasources": {
+    "ds0": "ls_v_daily_sales_trend_this_month"
+  }
+}

@@ -6,8 +6,14 @@ anyio==4.12.1
     # via
     #   httpx
     #   starlette
+attrs==25.4.0
+    # via
+    #   cattrs
+    #   looker-sdk
 blinker==1.9.0
     # via flask
+cattrs==25.3.0
+    # via looker-sdk
 certifi==2026.1.4
     # via
     #   httpcore
@@ -51,6 +57,8 @@ googleapis-common-protos==1.72.0
     # via
     #   google-api-core
     #   grpcio-status
+greenlet==3.3.1
+    # via playwright
 grpcio==1.76.0
     # via
     #   google-api-core
@@ -80,6 +88,8 @@ jinja2==3.1.6
     # via flask
 loguru==0.7.3
     # via ragic-edp (pyproject.toml)
+looker-sdk==25.20.0
+    # via ragic-edp (pyproject.toml)
 markupsafe==3.0.3
     # via
     #   flask
@@ -90,6 +100,8 @@ packaging==25.0
     #   deprecation
     #   google-cloud-bigquery
     #   gunicorn
+playwright==1.57.0
+    # via ragic-edp (pyproject.toml)
 proto-plus==1.27.0
     # via google-api-core
 protobuf==6.33.3
@@ -112,6 +124,8 @@ pydantic-core==2.41.5
     # via pydantic
 pydantic-settings==2.12.0
     # via ragic-edp (pyproject.toml)
+pyee==13.0.0
+    # via playwright
 python-dateutil==2.9.0.post0
     # via google-cloud-bigquery
 python-dotenv==1.2.1
@@ -127,6 +141,7 @@ requests==2.32.5
     #   ragic-edp (pyproject.toml)
     #   google-api-core
     #   google-cloud-bigquery
+    #   looker-sdk
 rsa==4.9.1
     # via google-auth
 six==1.17.0
@@ -135,9 +150,12 @@ starlette==0.51.0
     # via functions-framework
 typing-extensions==4.15.0
     # via
+    #   cattrs
     #   grpcio
+    #   looker-sdk
     #   pydantic
     #   pydantic-core
+    #   pyee
     #   typing-inspection
 typing-inspection==0.4.2
     # via

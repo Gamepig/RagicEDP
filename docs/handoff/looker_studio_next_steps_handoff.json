@@ -1,0 +1,197 @@
+{
+  "title": "Looker Studio Automation - Next Steps Handoff",
+  "created_at": "2026-01-31",
+  "workspace": "/Users/gamepig/projects/RagicEDP",
+  "status": "paused_waiting_for_user_go",
+  "do_not_execute_until": "User says: \"開始執行3\"",
+  "context": {
+    "official_report": {
+      "report_id": "252aa031-1fce-4c5f-b673-1849c3ee529e",
+      "page_id_chart01": "0kxmF",
+      "edit_url": "https://lookerstudio.google.com/u/0/reporting/252aa031-1fce-4c5f-b673-1849c3ee529e/page/0kxmF/edit"
+    },
+    "template_report": {
+      "report_id": "d9e8d363-e173-434e-8743-59b77a5ed62c",
+      "page_id": "0kxmF",
+      "edit_url": "https://lookerstudio.google.com/u/0/reporting/d9e8d363-e173-434e-8743-59b77a5ed62c/page/0kxmF/edit"
+    },
+    "bigquery": {
+      "project_id": "b25h01-ragic",
+      "dataset_id": "erp_backup",
+      "views": {
+        "01": "ls_v_01_daily_revenue_poc",
+        "02": "ls_v_02_top_10_brands_yesterday",
+        "03": "ls_v_03_monthly_revenue_accumulation",
+        "04": "ls_v_04_omnichannel_roas_overview",
+        "05": "ls_v_05_channel_contribution_trend"
+      }
+    },
+    "symptom_reported_by_user": {
+      "duplication": "Right panel shows many duplicated datasources (e.g., repeated ls_v_02_top_10_brands_yesterday).",
+      "root_concern": "Current scripts are not idempotent; reruns keep adding pages/charts/datasources."
+    },
+    "evidence_artifacts": {
+      "local_dir": "_local/looker_studio",
+      "common_files": [
+        "_local/looker_studio/official_pages_urls.txt",
+        "_local/looker_studio/chart01_verification_url.txt",
+        "_local/looker_studio/chart_02_after_paste.png",
+        "_local/looker_studio/chart_03_after_paste.png",
+        "_local/looker_studio/chart_04_after_paste.png",
+        "_local/looker_studio/chart_05_after_paste.png"
+      ]
+    }
+  },
+  "constraints": {
+    "no_code_changes_until_user_go": true,
+    "no_openrouter_usage": true,
+    "gemini_usage": {
+      "preferred": {
+        "provider": "opencode_antigravity",
+        "models": [
+          "google/antigravity-gemini-3-flash",
+          "google/antigravity-gemini-3-pro-high"
+        ]
+      },
+      "explicitly_forbidden": [
+        "OpenRouter",
+        "storing_api_keys_in_repo"
+      ]
+    },
+    "security": {
+      "never_commit": [
+        ".env",
+        "any_api_key",
+        "any_credentials"
+      ]
+    }
+  },
+  "goal": {
+    "primary": "Find correct, scalable approach to create/configure multiple charts/pages in a single official Looker Studio report without duplication on reruns.",
+    "secondary": [
+      "Document the official/idiomatic capabilities (Linking API vs Looker Studio API vs unsupported chart CRUD).",
+      "Identify in-repo scripts causing duplication and why.",
+      "Propose a source-of-truth workflow that is idempotent (repeatable without creating duplicates)."
+    ]
+  },
+  "execution_plan_v3": {
+    "label": "Plan 3 - Research and analysis only (no edits)",
+    "phase_0_prechecks": [
+      {
+        "id": "P0-1",
+        "action": "Confirm current OpenCode model and available antigravity Gemini models",
+        "how": "Read /Users/gamepig/.config/opencode/opencode.json; do NOT change it",
+        "success": "Model list includes antigravity-gemini-3-flash and antigravity-gemini-3-pro"
+      },
+      {
+        "id": "P0-2",
+        "action": "Confirm the official report is accessible in browser (manual user check)",
+        "how": "User opens official edit_url and confirms it loads",
+        "success": "User confirms access"
+      }
+    ],
+    "phase_1_repo_audit": [
+      {
+        "id": "P1-1",
+        "action": "Inventory scripts that create pages/charts/datasources",
+        "inputs": [
+          "scripts/looker_studio/*.py",
+          "scripts/looker/*.py"
+        ],
+        "focus": [
+          "Where pages are created (e.g., 'Add page')",
+          "Where datasources are added (e.g., 'Add data' -> BigQuery)",
+          "Where copy/paste operations occur",
+          "Any existence checks (and whether they are reliable)"
+        ],
+        "deliverable": "A short map: file -> function -> operation type (page/chart/datasource)"
+      },
+      {
+        "id": "P1-2",
+        "action": "Root-cause duplication mechanisms from code",
+        "analysis_prompts": [
+          "Which scripts are non-idempotent by design (always add page/chart)?",
+          "Which scripts attempt idempotency using brittle text checks?",
+          "Which loops re-run without guards (e.g., for specs)?"
+        ],
+        "deliverable": "A ranked list of duplication causes, each with code references"
+      }
+    ],
+    "phase_2_official_capabilities_research": [
+      {
+        "id": "P2-1",
+        "action": "Summarize officially supported automation surface",
+        "sources": [
+          "https://developers.google.com/looker-studio/integrate/linking-api",
+          "https://developers.google.com/looker-studio/integrate/api"
+        ],
+        "deliverable": "What is supported: Linking API for report creation + Looker Studio API for asset management; what is NOT supported: full report/chart CRUD"
+      },
+      {
+        "id": "P2-2",
+        "action": "Clarify datasource duplication rules (Create vs Add) and alias usage",
+        "deliverable": "Guidelines for avoiding duplicated datasources when using Linking API"
+      }
+    ],
+    "phase_3_proposed_correct_workflow": [
+      {
+        "id": "P3-1",
+        "action": "Propose a stable workflow to scale charts without duplication",
+        "options": [
+          {
+            "name": "Template-per-chart + Linking API per chart",
+            "pros": [
+              "No UI automation",
+              "Deterministic config via URL"
+            ],
+            "cons": [
+              "Many assets if user clicks Edit and share",
+              "Harder to maintain as one official report with many pages"
+            ]
+          },
+          {
+            "name": "Single official report, scripted idempotent updates",
+            "pros": [
+              "One asset",
+              "All pages in one report"
+            ],
+            "cons": [
+              "Requires UI automation; must implement strict idempotency and robust selectors"
+            ]
+          }
+        ],
+        "deliverable": "Recommendation + exact invariants for idempotency (page naming, chart tagging, datasource naming)"
+      },
+      {
+        "id": "P3-2",
+        "action": "Define idempotency keys",
+        "examples": {
+          "page_key": "{chart_id}__{view_table}",
+          "chart_tag_text": "__AUTO_CHART_ID__={chart_id}",
+          "datasource_name": "BQ::{project}.{dataset}.{table}"
+        },
+        "deliverable": "A minimal set of stable identifiers the automation can search for reliably"
+      }
+    ],
+    "phase_4_handoff_output": {
+      "deliverables": [
+        "A written report (markdown) summarizing findings",
+        "A follow-up JSON plan for implementation (only after user approves)"
+      ]
+    }
+  },
+  "notes": {
+    "anti_patterns_to_avoid": [
+      "Using page.get_by_text(view_table) to detect existing datasource (false positives)",
+      "Rerunning scripts that always click 'Add page' or 'Add data' without dedup guards",
+      "Copy/paste loops that do not mark created chart objects with unique tags"
+    ],
+    "related_files": [
+      "scripts/looker_studio/build_charts.py",
+      "scripts/looker_studio/finalize_aesthetic_reports.py",
+      "scripts/looker_studio/deep_sync_aesthetic_reports.py",
+      "scripts/looker_studio/setup_master_templates.py",
+      "scripts/looker_studio/build_aesthetic_charts.py"
+    ]
+  }
+}

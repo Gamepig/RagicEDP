@@ -1,0 +1,8 @@
+[dev]
+# base_url: include scheme + host + port if needed.
+# - GCP-hosted Looker commonly uses 443 for API.
+#   Example: https://mycompany.cloud.looker.com:443
+base_url=https://YOUR_LOOKER_HOST:443
+client_id=YOUR_CLIENT_ID
+client_secret=YOUR_CLIENT_SECRET
+verify_ssl=True

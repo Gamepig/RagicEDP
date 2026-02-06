@@ -1,0 +1,89 @@
+# BigQuery view deployment manifest for Looker Studio.
+#
+# Convention:
+# - All views live in dataset: erp_backup
+# - Prefix: ls_
+
+project: b25h01-ragic
+dataset: erp_backup
+
+views:
+  - id: base_order_lines
+    table: ls_v_order_lines
+    sql_path: sql/ls_v_order_lines.sql
+
+  - id: base_orders_ext
+    table: ls_v_orders_ext
+    sql_path: sql/ls_v_orders_ext.sql
+
+  - id: p1_1_daily_product_quantity
+    table: ls_p1_1_daily_product_quantity
+    sql_path: sql/ls_p1_1_daily_product_quantity.sql
+
+  - id: p1_2_brand_revenue_share
+    table: ls_p1_2_brand_revenue_share
+    sql_path: sql/ls_p1_2_brand_revenue_share.sql
+
+  - id: p1_4_category_dow_heat
+    table: ls_p1_4_category_dow_heat
+    sql_path: sql/ls_p1_4_category_dow_heat.sql
+
+  - id: p1_5_top20_products_by_qty
+    table: ls_p1_5_top20_products_by_qty
+    sql_path: sql/ls_p1_5_top20_products_by_qty.sql
+
+  - id: p1_9_monthly_asp
+    table: ls_p1_9_monthly_asp
+    sql_path: sql/ls_p1_9_monthly_asp.sql
+
+  - id: p1_10_weekend_weekday_qty
+    table: ls_p1_10_weekend_weekday_qty
+    sql_path: sql/ls_p1_10_weekend_weekday_qty.sql
+
+  - id: p3_rfm
+    table: ls_p3_rfm
+    sql_path: sql/ls_p3_rfm.sql
+
+  - id: v_01_today_revenue_achievement
+    table: ls_v_01_today_revenue_achievement
+    sql_path: sql/ls_v_01_today_revenue_achievement.sql
+
+  - id: v_02_top_10_brands_yesterday
+    table: ls_v_02_top_10_brands_yesterday
+    sql_path: sql/ls_v_02_top_10_brands_yesterday.sql
+
+  - id: v_03_monthly_revenue_accumulation
+    table: ls_v_03_monthly_revenue_accumulation
+    sql_path: sql/ls_v_03_monthly_revenue_accumulation.sql
+
+  - id: v_04_omnichannel_roas_overview
+    table: ls_v_04_omnichannel_roas_overview
+    sql_path: sql/ls_v_04_omnichannel_roas_overview.sql
+
+  - id: v_05_channel_contribution_trend
+    table: ls_v_05_channel_contribution_trend
+    sql_path: sql/ls_v_05_channel_contribution_trend.sql
+
+  - id: v_daily_sales_trend_this_month
+    table: ls_v_daily_sales_trend_this_month
+    sql_path: sql/ls_v_daily_sales_trend_this_month.sql
+
+  - id: v_01_poc
+    table: ls_v_01_poc
+    sql_path: sql/ls_v_01_poc.sql
+
+  - id: u_kpi_poc
+    table: ls_u_kpi_poc
+    sql_path: sql/ls_u_kpi_poc.sql
+
+  - id: u_ts_poc
+    table: ls_u_ts_poc
+    sql_path: sql/ls_u_ts_poc.sql
+
+  - id: u_bar_poc
+    table: ls_u_bar_poc
+    sql_path: sql/ls_u_bar_poc.sql
+
+  - id: u_pie_poc
+    table: ls_u_pie_poc
+    sql_path: sql/ls_u_pie_poc.sql

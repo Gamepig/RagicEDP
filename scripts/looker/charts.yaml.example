@@ -1,0 +1,18 @@
+# Example chart verification spec.
+# Add one entry per chart.
+
+charts:
+  - id: "1.1"
+    name: "Daily product sales trend"
+    # Choose ONE of: looker_query_id, look_id
+    looker_query_id: 123
+    # look_id: 456
+
+    # BigQuery truth SQL file path (repo-relative)
+    bq_sql_path: "scripts/looker/sql/1.1_daily_product_sales_trend.sql"
+
+    # Optional: comparison config
+    # If omitted, the verifier compares common columns (best effort)
+    key_columns: ["order_date"]
+    value_columns: ["quantity_sum"]
+    float_tolerance_ratio: 0.0001

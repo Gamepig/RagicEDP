@@ -1,0 +1,16 @@
+# Looker Studio report automation spec.
+#
+# You must supply a sharable report URL that opens the report directly.
+# Example format:
+#   https://lookerstudio.google.com/reporting/<REPORT_ID>/page/<PAGE_ID>
+
+report:
+  url: "https://lookerstudio.google.com/reporting/REPLACE_ME"
+
+downloads:
+  # One entry per chart/table you want to export.
+  # selector: Playwright locator selector (CSS or text-based) that identifies the chart container.
+  - id: "1.1"
+    name: "Daily product sales trend"
+    selector: "text=REPLACE_ME"
+    output_csv: "_local/looker_studio/downloads/1.1.csv"

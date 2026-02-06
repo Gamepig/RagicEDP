@@ -1,0 +1,19 @@
+{
+  "project": "RagicEDP",
+  "version": "2.0",
+  "last_updated": "2026-01-31T20:45:00Z",
+  "reports": [
+    {
+      "chart_id": "01",
+      "chart_name": "本月每日銷售趨勢",
+      "status": "active",
+      "linking_url": "https://lookerstudio.google.com/reporting/create?c.reportId=...",
+      "stable_report_url": "https://lookerstudio.google.com/u/0/reporting/252aa031-1fce-4c5f-b673-1849c3ee529e/page/0kxmF",
+      "last_sync_at": "2026-01-31T10:00:00Z",
+      "checksum": {
+        "bq_view": "ls_v_01_daily_revenue_poc",
+        "spec_hash": "a1b2c3d4"
+      }
+    }
+  ]
+}

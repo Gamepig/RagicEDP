@@ -1,0 +1,199 @@
+{
+  "project": "RagicEDP",
+  "date_local": "2026-01-30 03:24:05 CST",
+  "repo_root": "/Users/gamepig/projects/RagicEDP",
+  "goal": {
+    "chart_id": "01",
+    "expected_title": "01 | 本月每日銷售趨勢",
+    "expected_metric": "revenue",
+    "expected_dimension": "order_date",
+    "constraints": [
+      "Option 1 chosen: do not change data layer.",
+      "Use existing BigQuery view fields order_date/revenue.",
+      "Do not apply code changes until explicit instruction."
+    ]
+  },
+  "references": {
+    "linking_api": {
+      "url": "https://developers.google.com/looker-studio/integrate/linking-api",
+      "relevant_params": [
+        {
+          "name": "c.mode",
+          "purpose": "Initial report mode",
+          "values": [
+            "view",
+            "edit"
+          ],
+          "recommended_for_this_issue": "edit"
+        },
+        {
+          "name": "c.explain",
+          "purpose": "Show info/debug dialog button (troubleshooting Linking API configuration)",
+          "values": [
+            "true",
+            "false"
+          ],
+          "recommended_for_this_issue": "true (during debugging only)"
+        }
+      ]
+    }
+  },
+  "evidence": {
+    "screenshots": [
+      {
+        "path": "_local/looker_studio/final_verification_01.png",
+        "observations": [
+          "Title shows technical name ls_v_01_daily_revenue_poc",
+          "Metric shows Record Count",
+          "Dimension appears to be order_date",
+          "Values appear to be constant 1 (row counts)"
+        ]
+      },
+      {
+        "path": "_local/looker_studio/test_report_01.png",
+        "observations": [
+          "Blocking dialog about data access/permissions requires confirming"
+        ]
+      },
+      {
+        "path": "_local/looker_studio/page_01_final.png",
+        "observations": [
+          "Right panel shows Record Count field in available fields list"
+        ]
+      }
+    ],
+    "observed_runtime_errors": [
+      "Playwright click timeout for Add a chart button",
+      "Chart placement may succeed but metric not configured"
+    ]
+  },
+  "data_source": {
+    "bq_project": "b25h01-ragic",
+    "bq_dataset": "erp_backup",
+    "bq_view": "ls_v_01_daily_revenue_poc",
+    "sql_definition_path": "scripts/looker_studio/sql/ls_v_01_poc.sql",
+    "columns": [
+      "order_date",
+      "revenue"
+    ],
+    "grain": "daily",
+    "time_filter": "order_date >= first day of current month (Asia/Taipei)"
+  },
+  "current_script": {
+    "path": "scripts/looker_studio/build_perfect_01.py",
+    "linking_api": {
+      "base_url": "https://lookerstudio.google.com/reporting/create",
+      "parameters_used": [
+        "ds.connector=bigQuery",
+        "ds.projectId=b25h01-ragic",
+        "ds.datasetId=erp_backup",
+        "ds.tableId=ls_v_01_daily_revenue_poc",
+        "ds.type=TABLE",
+        "r.reportName=01 | 本月每日銷售趨勢"
+      ],
+      "missing_parameters_suspected": [
+        "c.mode=edit"
+      ]
+    },
+    "missing_steps": [
+      "Ensure report is in Edit mode before canvas operations",
+      "Replace metric Record Count -> revenue via Setup panel",
+      "Ensure dimension is order_date",
+      "Make Chinese title insertion reliable (focus/IME/commit)"
+    ]
+  },
+  "root_cause_hypotheses": [
+    {
+      "id": "RC1",
+      "rank": 1,
+      "hypothesis": "Script is operating in view mode (not edit mode), so canvas edits and toolbar actions are unavailable or ineffective.",
+      "supporting_evidence": [
+        "final_verification_01.png still shows default technical title and Record Count",
+        "Add a chart click timeout observed"
+      ],
+      "fix": "Add Linking API parameter c.mode=edit (preferred)."
+    },
+    {
+      "id": "RC2",
+      "rank": 2,
+      "hypothesis": "Metric is never configured, so Looker Studio defaults to Record Count.",
+      "supporting_evidence": [
+        "build_perfect_01.py has no Setup panel metric/dimension configuration",
+        "final_verification_01.png shows Record Count"
+      ],
+      "fix": "After chart placement, replace/remove Record Count chip and select revenue."
+    },
+    {
+      "id": "RC3",
+      "rank": 3,
+      "hypothesis": "Chinese title input fails due to focus/IME/commit mechanics; keyboard.type + Control+Enter is not reliable.",
+      "supporting_evidence": [
+        "Chinese title not present; technical title remains"
+      ],
+      "fix": "Use insert_text or locator.fill; commit via Escape or click-away."
+    },
+    {
+      "id": "RC4",
+      "rank": 4,
+      "hypothesis": "Blocking dialogs (data access confirmation) prevent interactions with toolbar/canvas.",
+      "supporting_evidence": [
+        "test_report_01.png shows access dialog"
+      ],
+      "fix": "Detect and click confirm/add buttons when visible; retry after dismissal."
+    },
+    {
+      "id": "RC5",
+      "rank": 5,
+      "hypothesis": "Selectors are brittle across locales/loading states; UI not ready when clicked.",
+      "supporting_evidence": [
+        "Add a chart locator timeout"
+      ],
+      "fix": "Use bilingual regex selectors, state checks, and a small retry strategy."
+    }
+  ],
+  "known_working_repo_patterns": {
+    "metric_replacement_simple": {
+      "path": "scripts/looker_studio/build_perfect_reports.py",
+      "steps": [
+        "Locate ng2-legacy-side-panel",
+        "Find chip with text Record Count and remove via mat-icon",
+        "Click Add metric",
+        "Select metric by text (e.g., revenue)"
+      ]
+    },
+    "metric_replacement_robust": {
+      "path": "scripts/looker_studio/build_charts.py",
+      "steps": [
+        "Open Setup/設定 tab",
+        "Find Record Count chip",
+        "Use overlay search input (Search|搜尋) to find metric",
+        "Select exact match; fallback to Add metric"
+      ]
+    }
+  },
+  "proposed_fix_plan_no_code_yet": [
+    "Add c.mode=edit to Linking API URL in build_perfect_01.py",
+    "After navigation, dismiss confirm/add dialogs if visible",
+    "Insert chart, then configure Setup: metric=revenue, dimension=order_date (reuse build_charts.py logic)",
+    "Insert title using insert_text/fill and commit via click-away or Escape",
+    "Verify via screenshot + on-page checks: title present, metric not Record Count"
+  ],
+  "verification_criteria": {
+    "visual": [
+      "Title equals '01 | 本月每日銷售趨勢'",
+      "Metric shows revenue (not Record Count)",
+      "Daily x-axis from order_date"
+    ],
+    "artifact_paths": [
+      "_local/looker_studio/final_verification_01.png"
+    ]
+  },
+  "environment": {
+    "run_command": "uv run python scripts/looker_studio/build_perfect_01.py",
+    "notes": [
+      "System shell may not have python on PATH; use uv run.",
+      "uv version observed: 0.8.22",
+      "uv run python -V observed: Python 3.13.3"
+    ]
+  }
+}

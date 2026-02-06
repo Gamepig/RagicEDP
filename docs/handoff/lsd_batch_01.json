@@ -1,0 +1,12 @@
+{
+  "project_id": "b25h01-ragic",
+  "dashboard_id": "9f9356d9-4b4c-41ff-a849-26ecf649176a",
+  "dashboard_name": "RagicEDP | Batch 01 | Charts 01-04",
+  "dashboard_dataset": "erp_backup",
+  "dashboard_datasources": {
+    "ds0": "ls_v_daily_sales_trend_this_month",
+    "ds1": "ls_v_02_top_10_brands_yesterday",
+    "ds2": "ls_v_03_monthly_revenue_accumulation",
+    "ds3": "ls_v_05_channel_contribution_trend"
+  }
+}
