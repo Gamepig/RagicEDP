@@ -1,9 +1,10 @@
 "use client";
 
-import type { ChartDataV0 } from "@/lib/data/analytics.repo";
-import type { ResultV0 } from "@/lib/data/types";
+import { AlertTriangle, Download, Pin, PinOff } from "lucide-react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
 import { useI18n } from "@/lib/i18n/i18n";
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
+import { EmptyState, ErrorState, LoadingState } from "@/components/states/common_states";
 
 type Point = { x: string; y: number };
 
@@ -26,18 +27,29 @@ export function ChartGrid(props: {
   loading?: boolean;
   pinned: boolean;
   onTogglePin: () => void;
+  status?: "active" | "needs_new_view";
 }) {
   const { t } = useI18n();
   const points = props.result.ok ? toPoints(props.result.data.data) : [];
+  const needsNewView = props.status === "needs_new_view";
 
   const gridStroke = "hsl(var(--border))";
   const axisTick = "hsl(var(--muted-foreground))";
   const lineStroke = "hsl(var(--foreground))";
-  const tooltipBg = "hsl(var(--foreground))";
-  const tooltipFg = "hsl(var(--background))";
+  const tooltipBg = "hsl(var(--popover))";
+  const tooltipFg = "hsl(var(--popover-foreground))";
 
   return (
-    <section className="rounded-xl border bg-background p-4 shadow-sm">
+    <section className="relative flex flex-col rounded-xl border bg-background p-4 shadow-sm transition-all hover:shadow-md">
+      {needsNewView && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-background/80 backdrop-blur-[1px]">
+          <div className="flex flex-col items-center gap-2 rounded-lg border bg-background p-4 shadow-sm">
+            <AlertTriangle className="h-6 w-6 text-yellow-500" />
+            <span className="text-sm font-medium text-muted-foreground">{t("chart.needsNewView")}</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">{props.title}</h2>
@@ -49,43 +61,66 @@ export function ChartGrid(props: {
           <button
             type="button"
             onClick={props.onTogglePin}
-            className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted/50"
+            disabled={needsNewView}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+            aria-label={props.pinned ? t("chart.unpin") : t("chart.pin")}
           >
-            {props.pinned ? t("chart.unpin") : t("chart.pin")}
+            {props.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
           </button>
-          <button type="button" className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted/50">
-            {t("chart.export")}
+          <button
+            type="button"
+            disabled={needsNewView}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+            aria-label={t("chart.export")}
+          >
+            <Download className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 min-h-[260px] flex-1">
         {props.loading ? (
-          <div className="h-full rounded-lg border bg-muted/30" />
+          <LoadingState />
         ) : !props.result.ok ? (
-          <div className="flex h-full items-center justify-center rounded-lg border">
-            <div className="text-sm text-muted-foreground">{props.result.error.message || t("chart.error")}</div>
-          </div>
+          <ErrorState message={props.result.error.message} traceId={props.result.error.code} />
         ) : points.length === 0 ? (
-          <div className="flex h-full items-center justify-center rounded-lg border">
-            <div className="text-sm text-muted-foreground">{t("chart.noData")}</div>
-          </div>
+          <EmptyState />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={gridStroke} />
-              <XAxis dataKey="x" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} width={48} />
+              <XAxis
+                dataKey="x"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: axisTick }}
+                dy={10}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: axisTick }}
+                width={40}
+              />
               <Tooltip
                 contentStyle={{
                   background: tooltipBg,
                   border: `1px solid ${gridStroke}`,
-                  borderRadius: 10,
+                  borderRadius: "var(--radius)",
                   color: tooltipFg,
                   fontSize: 12,
+                  boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                 }}
+                cursor={{ stroke: axisTick, strokeWidth: 1 }}
               />
-              <Line type="monotone" dataKey="y" stroke={lineStroke} strokeWidth={2} dot={false} />
+              <Line
+                type="monotone"
+                dataKey="y"
+                stroke={lineStroke}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 0 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         )}
