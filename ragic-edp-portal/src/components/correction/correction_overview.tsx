@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { getPendingRecords, getRecordDetail, ignoreCorrection, submitCorrection } from "@/actions/correction";
 import type { PaginatedV0, PendingRecordV0, RecordDetailV0, ResultV0 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
+import { LoadingState, EmptyState, ErrorState } from "@/components/states/common_states";
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-background p-4 shadow-sm">{children}</div>;
@@ -107,8 +108,8 @@ export function CorrectionOverview(props: { initialPending: ResultV0<PaginatedV0
           </div>
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-lg border">
-          <table className="w-full text-left text-sm">
+        <div className="mt-4 overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[500px] text-left text-sm">
             <thead className="bg-muted/30">
               <tr>
                 <th className="px-4 py-2 text-xs font-medium uppercase text-muted-foreground">{t("correction.recordId")}</th>
@@ -119,20 +120,20 @@ export function CorrectionOverview(props: { initialPending: ResultV0<PaginatedV0
             <tbody>
               {isPending ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-sm text-muted-foreground">
-                    {t("common.loading")}
+                  <td colSpan={3} className="py-4">
+                    <LoadingState />
                   </td>
                 </tr>
               ) : !pending.ok ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-sm text-muted-foreground">
-                    {pending.error.message}
+                  <td colSpan={3} className="py-4">
+                    <ErrorState title={t("common.error")} message={pending.error.message} />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-sm text-muted-foreground">
-                    {t("kpi.noData")}
+                  <td colSpan={3} className="py-4">
+                    <EmptyState title={t("kpi.noData")} />
                   </td>
                 </tr>
               ) : (
@@ -185,7 +186,7 @@ export function CorrectionOverview(props: { initialPending: ResultV0<PaginatedV0
 
         <div className="h-[calc(100%-4rem)] overflow-auto p-6">
           {!detail ? null : !detail.ok ? (
-            <div className="text-sm text-muted-foreground">{detail.error.message}</div>
+            <ErrorState title={t("common.error")} message={detail.error.message} />
           ) : (
             <div className="space-y-4">
               <div className="rounded-lg border p-4">

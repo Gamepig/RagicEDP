@@ -1,18 +1,41 @@
+import { AnalyticsOverview } from "@/components/analytics/analytics_overview";
+import { auth } from "@/lib/auth/auth";
+import { requireAuthorized } from "@/lib/auth/authorize";
 import { getRepositories } from "@/lib/data/provider";
 import { defaultFiltersV0 } from "@/lib/state/filters";
-import { AnalyticsOverview } from "@/components/analytics/analytics_overview";
+import { listCharts, getChartCategories } from "@/lib/analytics/chart_registry";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
+  const session = await auth();
+  requireAuthorized(session, "/analytics");
+
   const filters = defaultFiltersV0();
   const repos = getRepositories();
 
-  const [stats, chart, pinned] = await Promise.all([
+  const allCharts = listCharts();
+  const chartIds = allCharts.map((c) => c.chart_id);
+  const categories = getChartCategories();
+
+  const [stats, pinned, ...chartResults] = await Promise.all([
     repos.analytics.getDashboardStats({ dateRange: filters.dateRange }),
-    repos.analytics.getChartData({ chartId: "01", filters }),
     repos.analytics.listPinnedWidgets({ userId: "demo" }),
+    ...chartIds.map((chartId) => repos.analytics.getChartData({ chartId, filters })),
   ]);
 
-  return <AnalyticsOverview initialFilters={filters} initialStats={stats} initialChart={chart} initialPinned={pinned} />;
+  const charts = Object.fromEntries(
+    chartIds.map((id, index) => [id, chartResults[index]])
+  );
+
+  return (
+    <AnalyticsOverview
+      initialFilters={filters}
+      initialStats={stats}
+      initialCharts={charts}
+      initialPinned={pinned}
+      availableCharts={allCharts}
+      categories={categories}
+    />
+  );
 }

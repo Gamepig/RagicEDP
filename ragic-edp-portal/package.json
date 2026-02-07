@@ -11,11 +11,18 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/google-vertex": "^2.2.27",
+    "@google-cloud/bigquery": "^7.9.4",
+    "ai": "^4.3.19",
+    "firebase-admin": "12.0.0",
+    "lucide-react": "^0.563.0",
     "next": "15.1.7",
+    "next-auth": "5.0.0-beta.30",
     "next-themes": "0.4.6",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "recharts": "3.7.0"
+    "recharts": "3.7.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "22.13.1",

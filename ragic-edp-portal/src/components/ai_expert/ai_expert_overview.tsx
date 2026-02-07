@@ -1,255 +1,143 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-
-import { runAiExpert } from "@/actions/ai_expert";
-import { pinWidget } from "@/actions/analytics";
-import type { AiExpertOutputV0, ChartRefV0, QueryTraceV0, ResultV0 } from "@/lib/data/types";
+import { useCallback, useState } from "react";
+import type { AiChartDataV1, AiMessageV1 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
+import { ChatPanel } from "./chat_panel";
+import { ResearchReport, type ResearchSection } from "./research_report";
+import { MemorySearchPanel } from "./memory_search_panel";
+import { ResultPanel } from "./result_panel";
+import { SessionSidebar } from "./session_sidebar";
 
-type ChatMsgV0 =
-  | { id: string; role: "user"; content: string; createdAt: string }
-  | { id: string; role: "assistant"; content: string; createdAt: string; streaming?: boolean };
-
-function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-xl border bg-background p-4 shadow-sm">{children}</div>;
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeChartId(ref: ChartRefV0): string | null {
-  if (ref.kind === "catalog") return ref.chartId;
-  return null;
-}
-
-function TraceRow({ trace }: { trace: QueryTraceV0 }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs">
-      <div className="font-mono text-muted-foreground">{trace.correlationId}</div>
-      <div className="text-muted-foreground">{trace.mode}</div>
-      {typeof trace.bytesProcessed === "number" ? <div>{trace.bytesProcessed.toLocaleString()} bytes</div> : null}
-      {trace.blocked ? <div className="text-destructive">blocked: {trace.blockedReason || ""}</div> : null}
-    </div>
-  );
-}
+type TraceData = {
+  correlationId: string;
+  sql?: string;
+  bytesProcessed?: number;
+};
 
 export function AiExpertOverview() {
   const { t } = useI18n();
-  const [isPending, startTransition] = useTransition();
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [initialMessages, setInitialMessages] = useState<AiMessageV1[] | undefined>();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [charts, setCharts] = useState<AiChartDataV1[]>([]);
+  const [traces, setTraces] = useState<TraceData[]>([]);
+  const [researchSections, setResearchSections] = useState<ResearchSection[]>([]);
+  const [researchSummary, setResearchSummary] = useState<string | undefined>();
+  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
 
-  const [modelId, setModelId] = useState<string>("mock-default");
-  const [prompt, setPrompt] = useState<string>("");
-  const [messages, setMessages] = useState<ChatMsgV0[]>([]);
-  const [result, setResult] = useState<ResultV0<AiExpertOutputV0> | null>(null);
-
-  const streamTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (streamTimerRef.current) window.clearInterval(streamTimerRef.current);
-    };
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    try {
+      const res = await fetch(`/api/ai/sessions/${sessionId}/messages?limit=100`);
+      if (res.ok) {
+        const data = await res.json();
+        setInitialMessages(data.items);
+      }
+    } catch {
+      setInitialMessages([]);
+    }
   }, []);
 
-  const allowlistedModels = useMemo(
-    () => [
-      { id: "mock-default", label: "Mock Default" },
-      { id: "mock-fast", label: "Mock Fast" },
-    ],
-    []
+  const handleNewSession = useCallback(() => {
+    setActiveSessionId(null);
+    setInitialMessages(undefined);
+    setCharts([]);
+    setTraces([]);
+    setResearchSections([]);
+    setResearchSummary(undefined);
+    setLastMessageId(null);
+  }, []);
+
+  const handleResearchReceived = useCallback(
+    (research: { sections: ResearchSection[]; summary: string }) => {
+      setResearchSections(research.sections);
+      setResearchSummary(research.summary);
+    },
+    [],
   );
 
-  async function onRun() {
-    const trimmed = prompt.trim();
-    if (!trimmed) return;
+  const handleChartReceived = useCallback((chart: AiChartDataV1) => {
+    setCharts((prev) => [...prev, chart]);
+  }, []);
 
-    const sessionId = "sess_demo";
-    const userId = "demo";
-    const userMsg: ChatMsgV0 = { id: `u_${Date.now()}`, role: "user", content: trimmed, createdAt: nowIso() };
-    const asstId = `a_${Date.now()}`;
-    const asstMsg: ChatMsgV0 = { id: asstId, role: "assistant", content: t("ai.streaming"), createdAt: nowIso(), streaming: true };
-    setMessages((prev) => prev.concat(userMsg, asstMsg));
-    setPrompt("");
-    setResult(null);
+  const handleTraceReceived = useCallback((trace: TraceData) => {
+    setTraces((prev) => [...prev, trace]);
+  }, []);
 
-    startTransition(async () => {
-      const res = await runAiExpert({ sessionId, userId, prompt: trimmed, modelId, selectedChartId: "01" });
-      setResult(res);
+  const handlePinChart = useCallback(async (chart: AiChartDataV1) => {
+    try {
+      await fetch(`/api/ai/charts/${chart.chartId}/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref: chart.ref, title: chart.title }),
+      });
+    } catch {
+      // pin failure is non-critical
+    }
+  }, []);
 
-      if (!res.ok) {
-        setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: res.error.message, streaming: false } : m)));
-        return;
-      }
+  const handleSessionCreated = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setRefreshKey((k) => k + 1);
+  }, []);
 
-      // Fake streaming: reveal answerMarkdown gradually after response arrived.
-      const full = res.data.answerMarkdown;
-      let i = 0;
-      setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: "", streaming: true } : m)));
-
-      if (streamTimerRef.current) window.clearInterval(streamTimerRef.current);
-      streamTimerRef.current = window.setInterval(() => {
-        i += Math.max(1, Math.floor(full.length / 60));
-        const next = full.slice(0, i);
-        setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: next, streaming: i < full.length } : m)));
-        if (i >= full.length && streamTimerRef.current) {
-          window.clearInterval(streamTimerRef.current);
-          streamTimerRef.current = null;
-        }
-      }, 30);
-    });
-  }
-
-  async function onPin(ref: ChartRefV0) {
-    const chartId = safeChartId(ref);
-    if (!chartId) return;
-    await pinWidget({ userId: "demo", chartId });
-  }
+  const handleMessageComplete = useCallback((messageId: string) => {
+    setLastMessageId(messageId);
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{t("ai.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("ai.subtitle")}</p>
       </div>
 
-      <Card>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="md:col-span-1">
-            <div className="text-xs font-medium uppercase text-muted-foreground">{t("ai.model")}</div>
-            <select
-              value={modelId}
-              disabled={isPending}
-              onChange={(e) => setModelId(e.target.value)}
-              className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              {allowlistedModels.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <div className="text-xs font-medium uppercase text-muted-foreground">{t("ai.prompt")}</div>
-            <div className="mt-2 flex gap-2">
-              <input
-                value={prompt}
-                disabled={isPending}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder={t("ai.promptPlaceholder")}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onRun();
-                }}
-              />
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={onRun}
-                className="inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60"
-              >
-                {t("ai.send")}
-              </button>
-            </div>
-          </div>
+      <div className="grid h-[calc(100vh-12rem)] grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] xl:grid-cols-[280px_1fr_380px]">
+        {/* Session Sidebar */}
+        <div className="hidden rounded-xl border bg-background shadow-sm lg:block">
+          <SessionSidebar
+            activeSessionId={activeSessionId}
+            onSelectSession={handleSelectSession}
+            onNewSession={handleNewSession}
+            refreshKey={refreshKey}
+          />
         </div>
-      </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold tracking-tight">{t("ai.chat")}</div>
-            <div className="text-xs text-muted-foreground">{isPending ? t("common.loading") : ""}</div>
-          </div>
-          <div className="mt-4 flex max-h-[400px] flex-col space-y-3 overflow-y-auto">
-            {messages.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{t("ai.chatEmpty")}</div>
-            ) : (
-              messages
-                .slice()
-                .reverse()
-                .map((m) => (
-                  <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                    <div
-                      className={
-                        m.role === "user"
-                          ? "max-w-[90%] rounded-2xl bg-primary px-4 py-2 text-sm text-primary-foreground"
-                          : "max-w-[90%] rounded-2xl border bg-background px-4 py-2 text-sm"
-                      }
-                    >
-                      <div className="whitespace-pre-wrap">{m.content}</div>
-                    </div>
-                  </div>
-                ))
-            )}
-          </div>
-        </Card>
+        {/* Chat Panel */}
+        <div className="rounded-xl border bg-background shadow-sm">
+          <ChatPanel
+            sessionId={activeSessionId}
+            onSessionCreated={handleSessionCreated}
+            onMessageComplete={handleMessageComplete}
+            onChartReceived={handleChartReceived}
+            onTraceReceived={handleTraceReceived}
+            onResearchReceived={handleResearchReceived}
+            initialMessages={initialMessages}
+          />
+        </div>
 
-        <Card>
-          <div className="text-sm font-semibold tracking-tight">{t("ai.result")}</div>
-          <div className="mt-4 space-y-4">
-            {!result ? (
-              <div className="text-sm text-muted-foreground">{t("ai.resultEmpty")}</div>
-            ) : !result.ok ? (
-              <div className="text-sm text-muted-foreground">{result.error.message}</div>
-            ) : (
-              <>
-                <div>
-                  <div className="text-xs font-medium uppercase text-muted-foreground">{t("ai.insights")}</div>
-                  <div className="mt-2 space-y-2">
-                    {result.data.insights.map((ins, idx) => (
-                      <div key={idx} className="rounded-lg border p-3">
-                        <div className="text-sm font-semibold">{ins.title}</div>
-                        <div className="mt-1 text-sm text-muted-foreground">{ins.detailMarkdown}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-medium uppercase text-muted-foreground">{t("ai.charts")}</div>
-                  <div className="mt-2 space-y-2">
-                    {result.data.charts.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">{t("kpi.noData")}</div>
-                    ) : (
-                      result.data.charts.map((c, idx) => (
-                        <div key={idx} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{c.title}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {c.ref.kind === "catalog" ? `catalog:${c.ref.chartId}` : `saved:${c.ref.savedChartId}`}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted/50"
-                            onClick={() => onPin(c.ref)}
-                            disabled={c.ref.kind !== "catalog"}
-                          >
-                            {t("ai.pin")}
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-medium uppercase text-muted-foreground">{t("ai.traces")}</div>
-                  <div className="mt-2 space-y-2">
-                    {(result.data.traces || []).length === 0 ? (
-                      <div className="text-sm text-muted-foreground">{t("kpi.noData")}</div>
-                    ) : (
-                      (result.data.traces || []).map((tr) => <TraceRow key={tr.correlationId} trace={tr} />)
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
+        {/* Result Panel */}
+        <div className="hidden space-y-4 overflow-y-auto xl:block">
+          {researchSections.length > 0 && (
+            <ResearchReport
+              sections={researchSections}
+              summary={researchSummary}
+              sessionId={activeSessionId}
+              messageId={lastMessageId}
+              onPinChart={handlePinChart}
+            />
+          )}
+          <ResultPanel
+            charts={charts}
+            traces={traces}
+            sessionId={activeSessionId}
+            messageId={lastMessageId}
+            onPinChart={handlePinChart}
+          />
+          <MemorySearchPanel onSelectSession={handleSelectSession} />
+        </div>
       </div>
     </div>
   );

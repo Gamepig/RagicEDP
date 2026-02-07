@@ -4,6 +4,7 @@ import type { DashboardStatsV0 } from "@/lib/data/analytics.repo";
 import type { ResultV0 } from "@/lib/data/types";
 
 import { useI18n } from "@/lib/i18n/i18n";
+import { LoadingState, EmptyState, ErrorState } from "@/components/states/common_states";
 
 function KpiCard(props: { label: string; value: string; delta?: number }) {
   const delta = props.delta;
@@ -25,31 +26,16 @@ export function KpiRow(props: { result: ResultV0<DashboardStatsV0>; loading?: bo
   const { t } = useI18n();
 
   if (props.loading) {
-    return (
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="h-[110px] rounded-xl border bg-muted/30" />
-        <div className="h-[110px] rounded-xl border bg-muted/30" />
-      </section>
-    );
+    return <LoadingState />;
   }
 
   if (!props.result.ok) {
-    return (
-      <section className="rounded-xl border bg-background p-4">
-        <div className="text-sm font-semibold">{t("kpi.unavailable")}</div>
-        <div className="mt-1 text-sm text-muted-foreground">{props.result.error.message}</div>
-      </section>
-    );
+    return <ErrorState title={t("kpi.unavailable")} message={props.result.error.message} />;
   }
 
   const kpis = props.result.data.kpis;
   if (kpis.length === 0) {
-    return (
-      <section className="rounded-xl border bg-background p-4">
-        <div className="text-sm font-semibold">{t("kpi.noData")}</div>
-        <div className="mt-1 text-sm text-muted-foreground">{t("kpi.tryNarrow")}</div>
-      </section>
-    );
+    return <EmptyState title={t("kpi.noData")} message={t("kpi.tryNarrow")} />;
   }
 
   return (

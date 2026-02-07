@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { executeSql, getJoinHealth, nlToSql, previewData } from "@/actions/db-ops";
 import type { DbOpsSchemaV0, DbOpsSqlResultV0, JoinHealthReportV0, PaginatedV0, ResultV0, SchemaNodeV0 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
+import { LoadingState, EmptyState, ErrorState } from "@/components/states/common_states";
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-background p-4 shadow-sm">{children}</div>;
@@ -91,7 +92,7 @@ export function DbOpsOverview(props: { initialSchema: ResultV0<DbOpsSchemaV0> })
             <div className="text-xs font-medium uppercase text-muted-foreground">{t("dbops.schema")}</div>
             <div className="mt-4 max-h-[400px] overflow-y-auto">
               {!props.initialSchema.ok ? (
-                <div className="text-sm text-destructive">{props.initialSchema.error.message}</div>
+                <ErrorState title={t("common.error")} message={props.initialSchema.error.message} />
               ) : (
                 <SchemaTree data={props.initialSchema.data} onSelect={onSelectTable} />
               )}
@@ -144,7 +145,7 @@ export function DbOpsOverview(props: { initialSchema: ResultV0<DbOpsSchemaV0> })
               <div className="mt-4">
                 <div className="text-xs font-medium uppercase text-muted-foreground mb-2">{t("ai.result")}</div>
                 {!sqlResult.ok ? (
-                  <div className="text-sm text-destructive">{sqlResult.error.message}</div>
+                  <ErrorState title={t("common.error")} message={sqlResult.error.message} />
                 ) : (
                   <div className="overflow-x-auto rounded-lg border">
                     <pre className="p-3 text-xs">{JSON.stringify(sqlResult.data.data, null, 2)}</pre>
@@ -163,8 +164,8 @@ export function DbOpsOverview(props: { initialSchema: ResultV0<DbOpsSchemaV0> })
                 <div className="text-xs text-muted-foreground">{isPending ? t("common.loading") : ""}</div>
               </div>
               <div className="mt-3 overflow-x-auto rounded-lg border">
-                {!preview ? null : !preview.ok ? (
-                  <div className="p-4 text-sm text-destructive">{preview.error.message}</div>
+                {!preview ? <EmptyState title={t("kpi.noData")} message={t("dbops.subtitle")} /> : !preview.ok ? (
+                  <ErrorState title={t("common.error")} message={preview.error.message} />
                 ) : (
                   <table className="w-full text-left text-sm">
                     <thead className="bg-muted/30">
