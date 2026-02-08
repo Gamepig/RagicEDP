@@ -36,6 +36,31 @@ const COLORS = [
   "#ec4899", "#06b6d4", "#f97316", "#6366f1", "#14b8a6",
 ];
 
+/** Map common SQL column names to friendly Chinese labels for chart legends. */
+const FRIENDLY_LABELS: Record<string, string> = {
+  revenue: "營收",
+  total_revenue: "總營收",
+  order_count: "訂單數",
+  orders_this_year: "今年訂單",
+  orders_last_year: "去年訂單",
+  total_spent: "消費金額",
+  customer_count: "客戶數",
+  unique_customers: "不重複客戶",
+  units_sold: "銷售數量",
+  avg_order_value: "平均客單價",
+  month: "月份",
+  brand_name: "品牌",
+  city: "縣市",
+  channel: "通路",
+  product_name: "商品",
+};
+
+function friendlyLabel(key: string): string {
+  if (FRIENDLY_LABELS[key]) return FRIENDLY_LABELS[key];
+  // Convert snake_case to readable: e.g. "order_amount" → "order amount"
+  return key.replace(/_/g, " ");
+}
+
 type ChartRendererProps = {
   chart: AiChartDataV1;
   onTypeChange?: (chartId: string, newType: AiChartDataV1["chartType"]) => void;
@@ -81,9 +106,12 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
 
   // Rotate X-axis labels when there are many categories
   const needsRotation = rawData.length > 8;
-  const xAxisProps = needsRotation
-    ? { angle: -45, textAnchor: "end" as const, height: 80, interval: 0, className: "text-[10px]" }
-    : { className: "text-xs" };
+  const manyCategories = rawData.length > 15;
+  const xAxisProps = manyCategories
+    ? { angle: -90, textAnchor: "end" as const, height: 100, interval: 0, tick: { fontSize: 10, dx: -4, dy: -4 } }
+    : needsRotation
+      ? { angle: -45, textAnchor: "end" as const, height: 80, interval: 0, className: "text-[10px]" }
+      : { className: "text-xs" };
 
   // Custom pie label with connector lines — positions text at end of label line to avoid overlap
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,7 +131,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
   }
 
   function renderChart() {
-    const commonProps = { data, margin: { top: 5, right: 30, bottom: needsRotation ? 60 : 5, left: 10 } };
+    const commonProps = { data, margin: { top: 5, right: 30, bottom: manyCategories ? 80 : needsRotation ? 60 : 5, left: 10 } };
 
     switch (activeType) {
       case "bar":
@@ -115,7 +143,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Tooltip formatter={formatTooltip} />
             <Legend />
             {chart.yKeys.map((key, i) => (
-              <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} />
+              <Bar key={key} dataKey={key} name={friendlyLabel(key)} fill={COLORS[i % COLORS.length]} />
             ))}
           </BarChart>
         );
@@ -129,7 +157,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Tooltip formatter={formatTooltip} />
             <Legend />
             {chart.yKeys.map((key, i) => (
-              <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} strokeWidth={2} />
+              <Line key={key} type="monotone" dataKey={key} name={friendlyLabel(key)} stroke={COLORS[i % COLORS.length]} strokeWidth={2} />
             ))}
           </LineChart>
         );
@@ -165,7 +193,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Tooltip formatter={formatTooltip} />
             <Legend />
             {chart.yKeys.map((key, i) => (
-              <Area key={key} type="monotone" dataKey={key} fill={COLORS[i % COLORS.length]} fillOpacity={0.3} stroke={COLORS[i % COLORS.length]} />
+              <Area key={key} type="monotone" dataKey={key} name={friendlyLabel(key)} fill={COLORS[i % COLORS.length]} fillOpacity={0.3} stroke={COLORS[i % COLORS.length]} />
             ))}
           </AreaChart>
         );
@@ -179,7 +207,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Tooltip formatter={formatTooltip} />
             <Legend />
             {chart.yKeys.map((key, i) => (
-              <Bar key={key} dataKey={key} stackId="stack" fill={COLORS[i % COLORS.length]} />
+              <Bar key={key} dataKey={key} name={friendlyLabel(key)} stackId="stack" fill={COLORS[i % COLORS.length]} />
             ))}
           </BarChart>
         );
@@ -193,7 +221,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Tooltip formatter={formatTooltip} />
             <Legend />
             {chart.yKeys.map((key, i) => (
-              <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} />
+              <Bar key={key} dataKey={key} name={friendlyLabel(key)} fill={COLORS[i % COLORS.length]} />
             ))}
           </BarChart>
         );
@@ -208,9 +236,9 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Legend />
             {chart.yKeys.map((key, i) =>
               i === 0 ? (
-                <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} />
+                <Bar key={key} dataKey={key} name={friendlyLabel(key)} fill={COLORS[i % COLORS.length]} />
               ) : (
-                <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} strokeWidth={2} />
+                <Line key={key} type="monotone" dataKey={key} name={friendlyLabel(key)} stroke={COLORS[i % COLORS.length]} strokeWidth={2} />
               )
             )}
           </ComposedChart>
@@ -225,7 +253,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
             <Tooltip formatter={formatTooltip} />
             <Legend />
             {chart.yKeys.map((key, i) => (
-              <Radar key={key} dataKey={key} stroke={COLORS[i % COLORS.length]} fill={COLORS[i % COLORS.length]} fillOpacity={0.3} />
+              <Radar key={key} dataKey={key} name={friendlyLabel(key)} stroke={COLORS[i % COLORS.length]} fill={COLORS[i % COLORS.length]} fillOpacity={0.3} />
             ))}
           </RadarChart>
         );
@@ -309,7 +337,7 @@ export function ChartRenderer({ chart, onTypeChange, onPin }: ChartRendererProps
 
       <div className="w-full overflow-x-auto">
         {mounted && (
-          <div style={{ width: "100%", minWidth: 400, height: 300 }}>
+          <div style={{ width: "100%", minWidth: 400, height: manyCategories ? 380 : 300 }}>
             <ResponsiveContainer>
               {renderChart()!}
             </ResponsiveContainer>

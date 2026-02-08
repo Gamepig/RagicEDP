@@ -2,16 +2,21 @@ import { AnalyticsOverview } from "@/components/analytics/analytics_overview";
 import { auth } from "@/lib/auth/auth";
 import { requireAuthorized } from "@/lib/auth/authorize";
 import { getRepositories } from "@/lib/data/provider";
-import { defaultFiltersV0 } from "@/lib/state/filters";
+import { filtersFromSearchParams } from "@/lib/state/filters";
 import { listCharts, getChartCategories } from "@/lib/analytics/chart_registry";
 
 export const dynamic = "force-dynamic";
 
-export default async function AnalyticsPage() {
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string>>;
+}) {
   const session = await auth();
   requireAuthorized(session, "/analytics");
 
-  const filters = defaultFiltersV0();
+  const params = await searchParams;
+  const filters = filtersFromSearchParams(params);
   const repos = getRepositories();
 
   const allCharts = listCharts();

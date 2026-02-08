@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Send, Plus } from "lucide-react";
 import type { AiChartDataV1, AiKnowledgeSourceV1, AiMessageV1 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
@@ -274,7 +275,7 @@ export function ChatPanel({
                 )}
                 {m.role === "assistant" ? (
                   <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
                   </div>
                 ) : (
                   <div className="whitespace-pre-wrap">{m.content}</div>

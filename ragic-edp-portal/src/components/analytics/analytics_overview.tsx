@@ -1,17 +1,37 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { getChartData, getDashboardStats, getMultipleChartData, pinWidget, unpinWidget } from "@/actions/analytics";
+import { useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { pinWidget, unpinWidget } from "@/actions/analytics";
 import type { ChartDataV0, DashboardStatsV0 } from "@/lib/data/analytics.repo";
 import type { ChartFiltersV0, PinnedWidgetV0, ResultV0 } from "@/lib/data/types";
 import type { ChartSpecV0, ChartCategory } from "@/lib/analytics/chart_registry";
 
 import { useI18n } from "@/lib/i18n/i18n";
-import { useFilters } from "@/lib/state/use-filters";
 
-import { GlobalFilters } from "./global_filters";
 import { KpiRow } from "./kpi_row";
 import { ChartGrid } from "./chart_grid";
+
+function DateRangePicker({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-muted-foreground">日期範圍：</span>
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => onChange(e.target.value, to)}
+        className="rounded-md border px-2 py-1 text-sm"
+      />
+      <span className="text-muted-foreground">~</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => onChange(from, e.target.value)}
+        className="rounded-md border px-2 py-1 text-sm"
+      />
+    </div>
+  );
+}
 
 export function AnalyticsOverview(props: {
   initialFilters: ChartFiltersV0;
@@ -22,12 +42,20 @@ export function AnalyticsOverview(props: {
   categories: { id: ChartCategory; name: string }[];
 }) {
   const { t } = useI18n();
-  const [isPending, startTransition] = useTransition();
-  const { filters, updateFilters } = useFilters();
-  const [stats, setStats] = useState(props.initialStats);
-  const [charts, setCharts] = useState(props.initialCharts);
+  const router = useRouter();
+  const [stats] = useState(props.initialStats);
+  const [charts] = useState(props.initialCharts);
   const [pinned, setPinned] = useState(props.initialPinned);
   const [activeCategory, setActiveCategory] = useState<ChartCategory>(props.categories[0]?.id || "executive");
+
+  const dateRange = props.initialFilters.dateRange;
+
+  const handleDateChange = useCallback((from: string, to: string) => {
+    const params = new URLSearchParams();
+    params.set("from", from);
+    params.set("to", to);
+    router.push(`/analytics?${params.toString()}`);
+  }, [router]);
 
   const pinnedChartIds = useMemo(() => {
     if (!pinned.ok) return new Set<string>();
@@ -40,20 +68,6 @@ export function AnalyticsOverview(props: {
   const filteredCharts = useMemo(() => {
     return props.availableCharts.filter((c) => c.category === activeCategory);
   }, [props.availableCharts, activeCategory]);
-
-  function refreshFor(next: ChartFiltersV0) {
-    startTransition(async () => {
-      const [nextStats] = await Promise.all([
-        getDashboardStats({ dateRange: next.dateRange }),
-      ]);
-
-      const chartIds = props.availableCharts.map((c) => c.chart_id);
-      const nextCharts = await getMultipleChartData({ chartIds, filters: next });
-
-      setStats(nextStats);
-      setCharts(nextCharts);
-    });
-  }
 
   async function onTogglePin(chartId: string) {
     const userId = "demo";
@@ -78,19 +92,14 @@ export function AnalyticsOverview(props: {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{t("analytics.title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t("analytics.subtitle")}</p>
+        <DateRangePicker
+          from={dateRange.from}
+          to={dateRange.to}
+          onChange={handleDateChange}
+        />
       </div>
-
-      <GlobalFilters
-        value={filters}
-        disabled={isPending}
-        onChange={(next) => {
-          updateFilters(next);
-          refreshFor(next);
-        }}
-      />
 
       {pinned.ok && pinned.data.length > 0 ? (
         <section className="rounded-xl border bg-background p-4">
@@ -113,7 +122,7 @@ export function AnalyticsOverview(props: {
         </section>
       ) : null}
 
-      <KpiRow result={stats} loading={isPending} />
+      <KpiRow result={stats} />
 
       <div className="border-b">
         <div className="flex gap-1 overflow-x-auto">
@@ -141,10 +150,10 @@ export function AnalyticsOverview(props: {
             chartId={spec.chart_id}
             chartType={spec.chart_type}
             result={charts[spec.chart_id]}
-            loading={isPending}
             pinned={pinnedChartIds.has(spec.chart_id)}
             onTogglePin={() => onTogglePin(spec.chart_id)}
             status={spec.status}
+            dateRange={dateRange}
           />
         ))}
       </div>

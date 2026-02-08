@@ -6,6 +6,7 @@ function toIsoDate(d: Date): string {
 
 export function defaultDateRangeV0(now = new Date()): DateRangeV0 {
   const from = new Date(now);
+  from.setMonth(from.getMonth() - 6);
   from.setDate(1);
   return { from: toIsoDate(from), to: toIsoDate(now) };
 }

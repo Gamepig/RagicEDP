@@ -96,6 +96,13 @@ function getChartColor(chartId: string): string {
   return CHART_PALETTE[index];
 }
 
+/** Format Y-axis values */
+function fmtY(v: number): string {
+  if (v >= 10000) return `${(v / 10000).toFixed(1)}萬`;
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}K`;
+  return String(v);
+}
+
 function LineChartComponent({ data, color, variant = "default" }: { data: Point[]; color: string; variant?: "default" | "curved" | "step" | "dashed" }) {
   const gridStroke = "#e2e8f0";
   const axisTick = "#64748b";
@@ -109,8 +116,8 @@ function LineChartComponent({ data, color, variant = "default" }: { data: Point[
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={gridStroke} />
-        <XAxis dataKey="x" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} dy={10} />
-        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} width={55} tickFormatter={(v: number) => v >= 10000 ? `${(v / 10000).toFixed(1)}萬` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)} />
+        <XAxis dataKey="x" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: axisTick }} dy={10} interval="preserveStartEnd" angle={data.length > 15 ? -30 : 0} textAnchor={data.length > 15 ? "end" : "middle"} height={data.length > 15 ? 50 : 30} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} width={55} tickFormatter={fmtY} />
         <Tooltip
           contentStyle={{
             background: tooltipBg,
@@ -153,8 +160,8 @@ function AreaChartComponent({ data, color, variant = "gradient" }: { data: Point
           </linearGradient>
         </defs>
         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={gridStroke} />
-        <XAxis dataKey="x" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} dy={10} />
-        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} width={55} tickFormatter={(v: number) => v >= 10000 ? `${(v / 10000).toFixed(1)}萬` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)} />
+        <XAxis dataKey="x" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: axisTick }} dy={10} interval="preserveStartEnd" angle={data.length > 15 ? -30 : 0} textAnchor={data.length > 15 ? "end" : "middle"} height={data.length > 15 ? 50 : 30} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: axisTick }} width={55} tickFormatter={fmtY} />
         <Tooltip
           contentStyle={{
             background: tooltipBg,
@@ -179,10 +186,14 @@ function BarChartComponent({ data, color, horizontal = false, variant = "default
   const tooltipFg = "#0f172a";
   const gradientId = `barGradient-${Math.random().toString(36).substr(2, 9)}`;
 
-  const displayData = data.slice(0, 10);
+  const displayData = horizontal ? data.slice(0, 15) : data.slice(0, 20);
+
+  // Calculate left margin for horizontal bars based on longest label
+  const maxLabelLen = horizontal ? Math.max(...displayData.map(d => d.x.length), 4) : 0;
+  const leftWidth = horizontal ? Math.min(Math.max(maxLabelLen * 8, 80), 150) : 40;
 
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <ResponsiveContainer width="100%" height={horizontal ? Math.max(260, displayData.length * 28) : 260}>
       <BarChart
         data={displayData}
         margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
@@ -200,18 +211,19 @@ function BarChartComponent({ data, color, horizontal = false, variant = "default
           dataKey={horizontal ? undefined : "x"}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 12, fill: axisTick }}
+          tick={{ fontSize: 11, fill: axisTick }}
           dy={horizontal ? 0 : 10}
-          {...(horizontal ? { tickFormatter: (v: number) => v >= 10000 ? `${(v / 10000).toFixed(1)}萬` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v) } : {})}
+          {...(horizontal ? { tickFormatter: fmtY } : {})}
+          {...(!horizontal && displayData.length > 10 ? { angle: -30, textAnchor: "end", height: 50 } : {})}
         />
         <YAxis
           type={horizontal ? "category" : "number"}
           dataKey={horizontal ? "x" : undefined}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 12, fill: axisTick }}
-          width={horizontal ? 80 : 40}
-          {...(!horizontal ? { tickFormatter: (v: number) => v >= 10000 ? `${(v / 10000).toFixed(1)}萬` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v) } : {})}
+          tick={{ fontSize: 11, fill: axisTick }}
+          width={leftWidth}
+          {...(!horizontal ? { tickFormatter: fmtY } : {})}
         />
         <Tooltip
           contentStyle={{
@@ -358,7 +370,7 @@ function TableComponent({ data }: { data: Point[] }) {
           </tr>
         </thead>
         <tbody>
-          {data.slice(0, 10).map((row, i) => (
+          {data.slice(0, 20).map((row, i) => (
             <tr key={i} className="border-t">
               <td className="px-3 py-2">{row.x}</td>
               <td className="px-3 py-2 text-right font-mono">{row.y.toLocaleString()}</td>
@@ -395,18 +407,18 @@ function RadarChartComponent({ data, color }: { data: Point[]; color: string }) 
 
 function RadialBarChartComponent({ data, color }: { data: Point[]; color: string }) {
   const value = data.length > 0 ? data[0].y : 0;
-  const max = 100; 
+  const max = 100;
   const displayData = [{ name: "Value", value: Math.min(value, max), fill: color }];
 
   return (
     <ResponsiveContainer width="100%" height={260}>
       <RadialBarChart cx="50%" cy="50%" innerRadius="70%" outerRadius="100%" barSize={10} data={displayData} startAngle={180} endAngle={0}>
-        <RadialBar background dataKey="value" cornerRadius={10} />
-        <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold" fill={color}>
-          {value}%
+        <RadialBar background={{ fill: "#e2e8f0" }} dataKey="value" cornerRadius={10} />
+        <text x="50%" y="45%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold" fill={color}>
+          {value.toFixed(1)}%
         </text>
-        <text x="50%" y="65%" textAnchor="middle" className="text-xs fill-muted-foreground">
-          Achievement
+        <text x="50%" y="62%" textAnchor="middle" className="text-xs" fill="#64748b">
+          達成率
         </text>
       </RadialBarChart>
     </ResponsiveContainer>
@@ -420,7 +432,7 @@ function ScatterChartComponent({ data, color }: { data: Point[]; color: string }
       <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis type="number" dataKey="x" name="X" tick={{ fontSize: 12, fill: "#64748b" }} tickLine={false} axisLine={false} />
-        <YAxis type="number" dataKey="y" name="Y" tick={{ fontSize: 12, fill: "#64748b" }} tickLine={false} axisLine={false} width={55} tickFormatter={(v: number) => v >= 10000 ? `${(v / 10000).toFixed(1)}萬` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)} />
+        <YAxis type="number" dataKey="y" name="Y" tick={{ fontSize: 12, fill: "#64748b" }} tickLine={false} axisLine={false} width={55} tickFormatter={fmtY} />
         <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ borderRadius: "8px", fontSize: 12 }} />
         <Scatter name="Values" data={numData} fill={color} fillOpacity={0.7} />
       </ScatterChart>
@@ -453,7 +465,7 @@ function BubbleChartComponent({ data, color }: { data: BubblePoint[]; color: str
           tick={{ fontSize: 12, fill: axisTick }}
           tickLine={false}
           axisLine={false}
-          width={55} tickFormatter={(v: number) => v >= 10000 ? `${(v / 10000).toFixed(1)}萬` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)}
+          width={55} tickFormatter={fmtY}
         />
         <ZAxis type="number" dataKey="z" range={[100, 1000]} name="Monetary" />
         <Tooltip
@@ -513,7 +525,7 @@ function HeatmapComponent({ rawData, color }: { rawData: unknown[]; color: strin
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="px-2 py-1" />
+            <th className="px-2 py-1 text-left font-medium text-muted-foreground sticky left-0 bg-background" />
             {xLabels.map(x => (
               <th key={x} className="px-2 py-1 text-center font-medium text-muted-foreground">{x}</th>
             ))}
@@ -522,7 +534,7 @@ function HeatmapComponent({ rawData, color }: { rawData: unknown[]; color: strin
         <tbody>
           {yLabels.map(y => (
             <tr key={y}>
-              <td className="px-2 py-1 font-medium text-muted-foreground whitespace-nowrap">{y}</td>
+              <td className="px-2 py-1 font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-background">{y}</td>
               {xLabels.map(x => {
                 const val = cellMap.get(`${x}-${y}`) ?? 0;
                 return (
@@ -545,9 +557,8 @@ function HeatmapComponent({ rawData, color }: { rawData: unknown[]; color: strin
 }
 
 function TreemapComponent({ data, color }: { data: Point[]; color: string }) {
-  // Transform data for treemap (needs children structure usually, but we'll adapt flat data)
   const treeData = data.slice(0, 10).map((d) => ({ name: d.x, size: d.y }));
-  
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <Treemap
@@ -557,7 +568,7 @@ function TreemapComponent({ data, color }: { data: Point[]; color: string }) {
         stroke="#fff"
         fill={color}
         content={(props: any) => {
-            const { root, depth, x, y, width, height, index, name } = props;
+            const { depth, x, y, width, height, index, name } = props;
             return (
               <g>
                 <rect
@@ -606,7 +617,6 @@ function ChartRenderer({ chartType, data, rawData, chartId, unit }: { chartType:
     const variant = variantIndex === 0 ? "curved" : variantIndex === 1 ? "step" : "default";
     chart = <LineChartComponent data={data} color={color} variant={variant} />;
   } else if (normalizedType.includes("stacked_bar")) {
-    // Stacked bar rendered as grouped bar with series data
     chart = <BarChartComponent data={data} color={color} horizontal={false} variant="default" />;
   } else if (normalizedType.includes("bar") || normalizedType.includes("column") || normalizedType.includes("pareto") || normalizedType.includes("histogram")) {
     const isHorizontal = normalizedType.includes("horizontal") || normalizedType.includes("topn");
@@ -628,9 +638,10 @@ function ChartRenderer({ chartType, data, rawData, chartId, unit }: { chartType:
   } else if (normalizedType.includes("bubble")) {
     const bubblePoints = toBubblePoints(rawData);
     chart = <BubbleChartComponent data={bubblePoints} color={color} />;
-  } else if (normalizedType.includes("cohort")) {
-    chart = <TreemapComponent data={data} color={color} />;
-  } else if (normalizedType.includes("heatmap") || normalizedType.includes("matrix")) {
+  } else if (normalizedType.includes("cohort") || normalizedType.includes("matrix")) {
+    // Cohort and matrix types → heatmap
+    chart = <HeatmapComponent rawData={rawData} color={color} />;
+  } else if (normalizedType.includes("heatmap")) {
     chart = <HeatmapComponent rawData={rawData} color={color} />;
   } else if (normalizedType.includes("treemap")) {
     chart = <TreemapComponent data={data} color={color} />;
@@ -661,10 +672,10 @@ export function ChartGrid(props: {
   pinned: boolean;
   onTogglePin: () => void;
   status?: "ready" | "needs_new_view";
+  dateRange?: { from: string; to: string };
 }) {
   const { t } = useI18n();
   const points = props.result.ok ? toPoints(props.result.data.data) : [];
-  // Mock-first mode: always show chart data, no overlay
   const needsNewView = false;
 
   const titleKey = `chart.title.${props.chartId}` as TranslationKeyV0;
@@ -684,8 +695,13 @@ export function ChartGrid(props: {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">{displayTitle}</h2>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {t("chart.chartId")}: {props.chartId}
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{t("chart.chartId")}: {props.chartId}</span>
+            {props.dateRange && (
+              <span className="rounded bg-muted px-1.5 py-0.5">
+                {props.dateRange.from} ~ {props.dateRange.to}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

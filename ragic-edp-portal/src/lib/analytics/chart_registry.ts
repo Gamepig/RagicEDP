@@ -105,14 +105,9 @@ const CHART_SPEC: ChartRegistrySpec = {
       "view_customer_brand",
       "view_customer_primary_brand",
       "mv_monthly_sales",
+      "ls_v_order_lines_ext",
     ],
-    planned_views: [
-      {
-        name: "ls_v_order_lines_ext",
-        purpose:
-          "Flatten channel/payment/logistics/shipping fields from sheet_99_order_detail JSON; preserve order-line grain",
-      },
-    ],
+    planned_views: [],
   },
   charts: [
     {
@@ -151,7 +146,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     },
     {
       chart_id: "04",
-      name: "今日營收達成率",
+      name: "前日營收達成率",
       status: "ready",
       category: "executive",
       source: { type: "VIEW", name: "ls_v_01_today_revenue_achievement" },
@@ -167,7 +162,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "05",
       name: "通路貢獻度趨勢",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "VIEW", name: "ls_v_order_lines_ext" },
@@ -202,7 +197,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "11",
       name: "通路活動號碼成效排行（活動/促銷 proxy）",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -304,7 +299,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "25",
       name: "通路支付方式結構",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "VIEW", name: "ls_v_order_lines_ext" },
@@ -317,33 +312,14 @@ const CHART_SPEC: ChartRegistrySpec = {
       required_fields: ["channel_name", "payment_method", "order_code"],
     },
     {
-      chart_id: "26",
-      name: "訂單取消損失額度",
-      status: "needs_new_view",
-      category: "operations",
-      depends_on: ["ls_v_order_lines_ext"],
-      source: { type: "VIEW", name: "ls_v_order_lines_ext" },
-      chart_type: "kpi",
-      required_fields: ["order_code", "order_date", "order_amount", "status", "channel_name"],
-    },
-    {
       chart_id: "28",
       name: "每筆訂單平均物流成本（proxy）",
-      status: "needs_new_view",
+      status: "ready",
       category: "operations",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "VIEW", name: "ls_v_order_lines_ext" },
       chart_type: "time_series_line",
       required_fields: ["order_date", "order_code", "shipping_income", "amount_paid", "amount_with_shipping"],
-    },
-    {
-      chart_id: "30",
-      name: "營運異常警示",
-      status: "ready",
-      category: "operations",
-      source: { type: "VIEW", name: "v_daily_order_stats" },
-      chart_type: "alert_table",
-      required_fields: ["order_date", "order_count", "customer_count", "total_amount"],
     },
     {
       chart_id: "37",
@@ -414,13 +390,12 @@ const CHART_SPEC: ChartRegistrySpec = {
     },
     {
       chart_id: "52",
-      name: "客戶生日月份銷售貢獻（只取月份）",
-      status: "needs_new_view",
+      name: "客戶生日月份銷售貢獻（首購月份 proxy）",
+      status: "ready",
       category: "customer",
-      depends_on: ["v_customer_birth_month"],
-      source: { type: "QUERY", base: "sheet_99_order_detail" },
+      source: { type: "VIEW", name: "v_customer_birth_month" },
       chart_type: "bar",
-      required_fields: ["data", "customer_code", "order_code", "order_amount"],
+      required_fields: ["customer_code", "birth_month"],
     },
     {
       chart_id: "55",
@@ -449,7 +424,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "60",
       name: "跨通路購買轉移矩陣",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -486,7 +461,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-04",
       name: "通路 x 品牌 交叉矩陣",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -640,7 +615,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-21",
       name: "物流方式佔比",
-      status: "needs_new_view",
+      status: "ready",
       category: "operations",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -650,7 +625,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-22",
       name: "運費收入趨勢",
-      status: "needs_new_view",
+      status: "ready",
       category: "operations",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -660,7 +635,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-23",
       name: "含運實收 vs 訂單實收差額分布",
-      status: "needs_new_view",
+      status: "ready",
       category: "operations",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -670,7 +645,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-24",
       name: "COD 佔比",
-      status: "needs_new_view",
+      status: "ready",
       category: "operations",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -680,7 +655,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-25",
       name: "希望配達時段分布",
-      status: "needs_new_view",
+      status: "ready",
       category: "operations",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -690,7 +665,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-27",
       name: "通路訂單數趨勢",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -705,7 +680,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-28",
       name: "通路客單價比較",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
@@ -717,7 +692,7 @@ const CHART_SPEC: ChartRegistrySpec = {
     {
       chart_id: "NEW-31",
       name: "通路新客佔比",
-      status: "needs_new_view",
+      status: "ready",
       category: "channel",
       depends_on: ["ls_v_order_lines_ext"],
       source: { type: "QUERY", base: "ls_v_order_lines_ext" },
