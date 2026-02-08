@@ -49,7 +49,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <div className="mx-auto flex max-w-[1400px]">
-        <aside className="hidden min-h-dvh w-64 border-r bg-muted/10 p-4 lg:block">
+        <aside className="hidden min-h-dvh w-44 shrink-0 border-r bg-muted/10 p-4 lg:block">
           <div className="flex h-10 items-center px-2 text-sm font-semibold tracking-tight">RagicEDP</div>
           <nav className="mt-4 space-y-1">
             {nav.map((item) => (

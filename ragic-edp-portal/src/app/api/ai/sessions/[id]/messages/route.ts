@@ -11,9 +11,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  assertAuthorized(session);
+  try {
+    assertAuthorized(session);
+  } catch {
+    return Response.json(
+      { error: { code: "UNAUTHORIZED", message: "未授權" } },
+      { status: 401 }
+    );
+  }
 
-  const userId = session.user?.email ?? "unknown";
+  const userId = session?.user?.email ?? (process.env.NODE_ENV === "development" ? "dev@local" : "unknown");
   const { id: sessionId } = await params;
 
   // Verify ownership

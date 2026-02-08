@@ -156,7 +156,7 @@ export const translationsV0: Record<PortalLangV0, Record<TranslationKeyV0, strin
     "nav.analytics": "分析報表",
     "nav.correction": "資料修正",
     "nav.ai": "AI 專家",
-    "nav.dbops": "DB 操作",
+    "nav.dbops": "BigQuery 查詢",
 
     "header.portal": "門戶",
     "header.mockFirst": "模擬",
@@ -196,8 +196,8 @@ export const translationsV0: Record<PortalLangV0, Record<TranslationKeyV0, strin
     "ai.pin": "釘選到儀表板",
     "ai.traces": "Trace",
 
-    "dbops.title": "DB 操作",
-    "dbops.subtitle": "Schema & SQL（mock-first）",
+    "dbops.title": "BigQuery 查詢",
+    "dbops.subtitle": "Schema 瀏覽與自然語言 SQL 查詢",
 
     "common.comingSoon": "即將推出",
     "common.goAnalyticsHint": "先完成 Analytics 的互動與視覺審核，再逐步擴到其他模組。",
@@ -357,8 +357,8 @@ export const translationsV0: Record<PortalLangV0, Record<TranslationKeyV0, strin
     "ai.pin": "Pin to dashboard",
     "ai.traces": "Traces",
 
-    "dbops.title": "DB Ops",
-    "dbops.subtitle": "(Coming soon / mock-first)",
+    "dbops.title": "BigQuery Query",
+    "dbops.subtitle": "Schema browser & natural language SQL",
 
     "common.comingSoon": "Coming soon",
     "common.goAnalyticsHint": "Finish Analytics interactions and style sign-off first, then expand to other modules.",

@@ -21,6 +21,11 @@ export type SqlSafetyResult =
 export function validateSql(sql: string): SqlSafetyResult {
   const upper = sql.toUpperCase().trim();
 
+  // Must start with SELECT or WITH (CTE)
+  if (!upper.startsWith("SELECT") && !upper.startsWith("WITH")) {
+    return { safe: false, reason: "AI 無法生成有效的查詢語句，可能是此類資料目前不可用" };
+  }
+
   // Reject DDL/DML
   for (const kw of DDL_DML_KEYWORDS) {
     // Match keyword at word boundary
@@ -35,8 +40,18 @@ export function validateSql(sql: string): SqlSafetyResult {
     return { safe: false, reason: "不允許多重查詢語句" };
   }
 
-  // Ensure LIMIT exists — append if missing
+  // Remove trailing semicolon
   let safeSql = sql.replace(/;\s*$/, "").trim();
+
+  // Check if SQL looks complete (ends with a valid SQL token, not mid-clause)
+  const trimmedUpper = safeSql.toUpperCase().trimEnd();
+  const incompleteEndings = ["WHERE", "AND", "OR", "ON", "JOIN", "FROM", "BY", "ORDER", "GROUP", "HAVING", "SET", "INTO", "VALUES", "SELECT", "PARTITION"];
+  const lastWord = trimmedUpper.split(/\s+/).pop() || "";
+  if (incompleteEndings.includes(lastWord)) {
+    return { safe: false, reason: `SQL 語句不完整（結尾於 ${lastWord}），AI 模型未能生成完整查詢` };
+  }
+
+  // Append LIMIT if missing (only at the outermost level, after a complete statement)
   if (!upper.includes("LIMIT")) {
     safeSql += ` LIMIT ${MAX_LIMIT}`;
   }

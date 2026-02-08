@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth/auth";
 import { assertAuthorized } from "@/lib/auth/authorize";
-import { getChatModel, streamText } from "@/lib/ai/vertex-client";
+import { getChatModel, getFastModel, streamText } from "@/lib/ai/vertex-client";
 import { buildSystemPrompt } from "@/lib/ai/expert-prompt";
 import { AiSessionRepository } from "@/lib/firestore/ai-session.repo";
 import { AiMessageRepository } from "@/lib/firestore/ai-message.repo";
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const userId = session!.user?.email;
+  const userId = session?.user?.email ?? (process.env.NODE_ENV === "development" ? "dev@local" : null);
   if (!userId) {
     return Response.json(
       { error: { code: "UNAUTHORIZED", message: "無法識別使用者" } },
@@ -192,49 +192,73 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // If intent requires BQ query, execute it first
-          if (intent.type === "generate_chart" || intent.type === "query_database") {
-            controller.enqueue(encoder.encode(sseEncode("progress", { step: "generating_sql", total: 4, current: 1 })));
+          // ALWAYS attempt BQ query for any data-related question
+          // Only skip for deep_research (has its own BQ flow) and pure knowledge_lookup
+          let bqData: Record<string, unknown>[] = [];
+          let sqlFallbackReason: string | null = null;
+          const shouldQueryBq = intent.type !== "deep_research" && intent.type !== "knowledge_lookup";
+          if (shouldQueryBq) {
+            const totalSteps = 4;
+            controller.enqueue(encoder.encode(sseEncode("progress", { step: "generating_sql", total: totalSteps, current: 1 })));
 
-            const sqlResult = await generateSql(intent.query, correlationId);
+            const queryText = intent.type === "generate_chart" || intent.type === "query_database"
+              ? (intent as { query: string }).query
+              : prompt;
+            try {
+            const sqlResult = await generateSql(queryText, correlationId);
+            console.log(`[ROUTE] SQL safe=${sqlResult.safetyCheck.safe}, sql=${sqlResult.safetyCheck.safe ? sqlResult.safetyCheck.sql.slice(0, 500) : sqlResult.safetyCheck.reason}`);
             if (!sqlResult.safetyCheck.safe) {
-              controller.enqueue(encoder.encode(sseEncode("error", { code: "QUERY_FAILED", message: sqlResult.safetyCheck.reason })));
-              controller.close();
-              return;
+              sqlFallbackReason = sqlResult.safetyCheck.reason;
+            } else {
+              controller.enqueue(encoder.encode(sseEncode("progress", { step: "querying_database", total: totalSteps, current: 2 })));
+
+              const bqResult = await executeBqQuery(sqlResult.safetyCheck.sql, correlationId);
+              controller.enqueue(encoder.encode(sseEncode("trace", {
+                correlationId: bqResult.trace.correlationId,
+                sql: bqResult.trace.sql,
+                bytesProcessed: bqResult.trace.bytesProcessed,
+              })));
+
+              console.log(`[ROUTE] BQ result: ${bqResult.data.length} rows`);
+              if (bqResult.data.length === 0) {
+                sqlFallbackReason = "查無符合條件的資料，請嘗試調整條件";
+              } else {
+                bqData = bqResult.data;
+
+                // Generate chart when data has enough rows for meaningful visualization
+                if (bqResult.data.length >= 2) {
+                  controller.enqueue(encoder.encode(sseEncode("progress", { step: "rendering_chart", total: totalSteps, current: 3 })));
+                  const chartHint = intent.type === "generate_chart" ? (intent as { chartType?: string }).chartType : undefined;
+                  const rec = recommendChartType(bqResult.data, chartHint);
+
+                  // Limit chart data to top 20 rows for readability
+                  let chartRows = bqResult.data;
+                  if (chartRows.length > 20 && rec.yKeys.length > 0) {
+                    const sortKey = rec.yKeys[0];
+                    chartRows = [...chartRows]
+                      .sort((a, b) => (Number(b[sortKey]) || 0) - (Number(a[sortKey]) || 0))
+                      .slice(0, 20);
+                  }
+
+                  const chartData: AiChartDataV1 = {
+                    chartId: `chart_${Date.now()}`,
+                    title: prompt.slice(0, 50),
+                    chartType: rec.chartType,
+                    data: chartRows,
+                    xKey: rec.xKey,
+                    yKeys: rec.yKeys,
+                  };
+                  charts = [chartData];
+                  controller.enqueue(encoder.encode(sseEncode("chart", chartData)));
+                }
+              }
+            }
+            } catch (bqErr) {
+              console.error(`[ROUTE] SQL/BQ error:`, bqErr instanceof Error ? bqErr.message : bqErr);
+              sqlFallbackReason = `資料庫查詢失敗: ${bqErr instanceof Error ? bqErr.message : "未知錯誤"}`;
             }
 
-            controller.enqueue(encoder.encode(sseEncode("progress", { step: "querying_database", total: 4, current: 2 })));
-
-            const bqResult = await executeBqQuery(sqlResult.safetyCheck.sql, correlationId);
-            controller.enqueue(encoder.encode(sseEncode("trace", {
-              correlationId: bqResult.trace.correlationId,
-              sql: bqResult.trace.sql,
-              bytesProcessed: bqResult.trace.bytesProcessed,
-            })));
-
-            if (bqResult.data.length === 0) {
-              controller.enqueue(encoder.encode(sseEncode("error", { code: "QUERY_FAILED", message: "查無符合條件的資料，請嘗試調整條件" })));
-              controller.close();
-              return;
-            }
-
-            controller.enqueue(encoder.encode(sseEncode("progress", { step: "rendering_chart", total: 4, current: 3 })));
-
-            // Build chart data
-            const chartHint = intent.type === "generate_chart" ? intent.chartType : undefined;
-            const rec = recommendChartType(bqResult.data, chartHint);
-            const chartData: AiChartDataV1 = {
-              chartId: `chart_${Date.now()}`,
-              title: prompt.slice(0, 50),
-              chartType: rec.chartType,
-              data: bqResult.data.slice(0, 500),
-              xKey: rec.xKey,
-              yKeys: rec.yKeys,
-            };
-            charts = [chartData];
-            controller.enqueue(encoder.encode(sseEncode("chart", chartData)));
-
-            controller.enqueue(encoder.encode(sseEncode("progress", { step: "generating_analysis", total: 4, current: 4 })));
+            controller.enqueue(encoder.encode(sseEncode("progress", { step: "generating_analysis", total: totalSteps, current: totalSteps })));
           }
 
           // Deep Research mode — full orchestration
@@ -312,20 +336,56 @@ export async function POST(request: Request) {
             controller.enqueue(encoder.encode(sseEncode("knowledge", { sources: knowledgeSources })));
           }
 
-          // Stream AI analysis text
-          const augmentedPrompt = charts.length > 0
-            ? `${prompt}\n\n[查詢結果已取得 ${charts[0].data.length} 筆資料，圖表已產生。請針對數據提供分析洞察。]`
-            : prompt;
+          // Stream AI analysis text — inject actual BQ data or fallback reason into prompt
+          let augmentedPrompt = prompt;
+          if (bqData.length > 0) {
+            const previewRows = bqData.slice(0, 50);
+            const dataPreview = JSON.stringify(previewRows, null, 2);
+            augmentedPrompt = `${prompt}\n\n以下是從 BigQuery 查詢到的真實數據：\n- **精確總筆數：${bqData.length} 筆**（這是完整查詢結果，非取樣）\n- 以下顯示前 ${previewRows.length} 筆供分析：\n\`\`\`json\n${dataPreview}\n\`\`\`\n\n重要規則：\n1. 總數請使用上方的「精確總筆數」，這是真實數據\n2. 分析內容只能基於提供的數據，嚴禁捏造\n3. 如果數據有排序，前幾筆就是最重要的`;
+          } else if (sqlFallbackReason) {
+            augmentedPrompt = `${prompt}\n\n注意：系統無法取得此查詢的數據。原因：${sqlFallbackReason}。請向使用者解釋目前資料的限制，並建議可行的替代分析方式（例如按縣市、品牌、通路分析）。`;
+          }
 
-          const result = streamText({
-            model: getChatModel(),
-            system: systemPrompt,
-            prompt: augmentedPrompt,
-          });
+          // Try main model, fallback to fast model if it fails
+          let streamModel;
+          try {
+            streamModel = getChatModel();
+            // Quick probe: if model creation itself throws, catch here
+          } catch {
+            streamModel = getFastModel();
+          }
 
-          for await (const chunk of result.textStream) {
-            fullContent += chunk;
-            controller.enqueue(encoder.encode(sseEncode("token", { text: chunk })));
+          try {
+            const result = streamText({
+              model: streamModel,
+              system: systemPrompt,
+              prompt: augmentedPrompt,
+            });
+
+            for await (const chunk of result.textStream) {
+              fullContent += chunk;
+              controller.enqueue(encoder.encode(sseEncode("token", { text: chunk })));
+            }
+          } catch (streamErr) {
+            // Fallback to fast model if main model fails during streaming
+            aiLog({
+              level: "warn",
+              correlationId,
+              module: "ai_expert",
+              action: "chat",
+              userId,
+              error: `Main model failed, falling back to fast model: ${streamErr instanceof Error ? streamErr.message : "unknown"}`,
+            });
+            const fallbackResult = streamText({
+              model: getFastModel(),
+              system: systemPrompt,
+              prompt: augmentedPrompt,
+            });
+
+            for await (const chunk of fallbackResult.textStream) {
+              fullContent += chunk;
+              controller.enqueue(encoder.encode(sseEncode("token", { text: chunk })));
+            }
           }
 
           // Save assistant message
@@ -383,8 +443,14 @@ export async function POST(request: Request) {
             error: message,
             durationMs: Date.now() - startTime,
           });
+          const errDetail = err instanceof Error ? err.message : "Unknown error";
           controller.enqueue(
-            encoder.encode(sseEncode("error", { code: "MODEL_UNAVAILABLE", message: "AI 服務暫時無法使用，請稍後再試" }))
+            encoder.encode(sseEncode("error", {
+              code: "MODEL_UNAVAILABLE",
+              message: process.env.NODE_ENV === "development"
+                ? `AI 服務錯誤: ${errDetail}`
+                : "AI 服務暫時無法使用，請稍後再試",
+            }))
           );
           controller.close();
         }

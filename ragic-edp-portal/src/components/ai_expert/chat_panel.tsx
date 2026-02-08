@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { Send, Plus } from "lucide-react";
 import type { AiChartDataV1, AiKnowledgeSourceV1, AiMessageV1 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
+import { ChartRenderer } from "./chart_renderer";
+import { PdfExportButton } from "./pdf_export_button";
 
 type ChatMessage = {
   id: string;
@@ -11,6 +14,7 @@ type ChatMessage = {
   content: string;
   streaming?: boolean;
   knowledgeSources?: AiKnowledgeSourceV1[];
+  charts?: AiChartDataV1[];
 };
 
 type TraceData = {
@@ -31,7 +35,9 @@ type ChatPanelProps = {
   onChartReceived?: (chart: AiChartDataV1) => void;
   onTraceReceived?: (trace: TraceData) => void;
   onResearchReceived?: (research: ResearchData) => void;
+  onNewSession?: () => void;
   initialMessages?: AiMessageV1[];
+  resetKey?: number;
 };
 
 export function ChatPanel({
@@ -41,7 +47,9 @@ export function ChatPanel({
   onChartReceived,
   onTraceReceived,
   onResearchReceived,
+  onNewSession,
   initialMessages,
+  resetKey,
 }: ChatPanelProps) {
   const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -51,7 +59,7 @@ export function ChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load initial messages when session changes
+  // Load initial messages when switching to an existing session
   useEffect(() => {
     if (initialMessages) {
       setMessages(
@@ -61,10 +69,17 @@ export function ChatPanel({
           content: m.content,
         }))
       );
-    } else {
-      setMessages([]);
     }
   }, [initialMessages]);
+
+  // Clear messages when starting a new session (sessionId becomes null or resetKey changes)
+  useEffect(() => {
+    if (sessionId === null) {
+      setMessages([]);
+      setPrompt("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, resetKey]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -157,8 +172,15 @@ export function ChatPanel({
                   onSessionCreated(data.sessionId, data.title);
                 }
                 onMessageComplete(data.messageId);
-              } else if (eventName === "chart" && onChartReceived) {
-                onChartReceived(data);
+              } else if (eventName === "chart") {
+                if (onChartReceived) onChartReceived(data);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === asstId
+                      ? { ...m, charts: [...(m.charts ?? []), data] }
+                      : m
+                  )
+                );
               } else if (eventName === "trace" && onTraceReceived) {
                 onTraceReceived(data);
               } else if (eventName === "research" && onResearchReceived) {
@@ -200,18 +222,31 @@ export function ChatPanel({
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [prompt, isStreaming, sessionId, mode, onSessionCreated, onMessageComplete, onResearchReceived]);
+  }, [prompt, isStreaming, sessionId, mode, onSessionCreated, onMessageComplete, onChartReceived, onTraceReceived, onResearchReceived]);
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-sm font-semibold">{t("ai.chat")}</h2>
-        {isStreaming && (
-          <span className="text-xs text-muted-foreground">{t("ai.streaming")}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {isStreaming && (
+            <span className="text-xs text-muted-foreground">{t("ai.streaming")}</span>
+          )}
+          {onNewSession && (
+            <button
+              type="button"
+              onClick={onNewSession}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              title="新對話"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新對話
+            </button>
+          )}
+        </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={scrollRef} data-chat-scroll className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {t("ai.chatEmpty")}
@@ -223,15 +258,34 @@ export function ChatPanel({
               className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
             >
               <div
+                data-role={m.role}
                 className={
                   m.role === "user"
                     ? "max-w-[85%] rounded-2xl bg-primary px-4 py-2 text-sm text-primary-foreground"
-                    : "max-w-[85%] rounded-2xl border bg-background px-4 py-2 text-sm"
+                    : `${m.charts?.length ? "w-full" : "max-w-[85%]"} rounded-2xl border bg-background px-4 py-2 text-sm`
                 }
               >
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                {m.charts && m.charts.length > 0 && (
+                  <div className="mb-3 space-y-3">
+                    {m.charts.map((chart) => (
+                      <ChartRenderer key={chart.chartId} chart={chart} onPin={() => {}} />
+                    ))}
+                  </div>
+                )}
+                {m.role === "assistant" ? (
+                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap">{m.content}</div>
+                )}
                 {m.streaming && (
-                  <span className="inline-block h-4 w-1 animate-pulse bg-foreground/50" />
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+                    <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+                    <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-primary" />
+                    <span className="ml-2 text-xs text-muted-foreground">思考中...</span>
+                  </div>
                 )}
                 {m.knowledgeSources && m.knowledgeSources.length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
@@ -241,6 +295,11 @@ export function ChatPanel({
                         [{i + 1}] {src.docTitle} (相關度: {src.relevanceScore})
                       </div>
                     ))}
+                  </div>
+                )}
+                {m.role === "assistant" && !m.streaming && m.content && (
+                  <div className="mt-2 flex gap-2 border-t pt-2">
+                    <PdfExportButton sessionId={sessionId ?? ""} messageId={m.id} />
                   </div>
                 )}
               </div>
@@ -262,29 +321,31 @@ export function ChatPanel({
                   : "border hover:bg-muted/50"
               }`}
             >
-              {m === "auto" ? "自動" : "深度研究"}
+              {m === "auto" ? "一般" : "深度研究"}
             </button>
           ))}
         </div>
+        <p className="mb-1 text-[10px] text-muted-foreground">Shift + Enter 送出</p>
         <div className="flex gap-2">
-          <input
+          <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 sendMessage();
               }
             }}
             placeholder={t("ai.promptPlaceholder")}
             disabled={isStreaming}
-            className="h-10 flex-1 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            rows={2}
+            className="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
           <button
             type="button"
             onClick={sendMessage}
             disabled={isStreaming || !prompt.trim()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+            className="inline-flex h-auto w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </button>

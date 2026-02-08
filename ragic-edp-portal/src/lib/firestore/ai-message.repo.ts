@@ -36,11 +36,11 @@ export class AiMessageRepository {
       role: input.role,
       content: input.content,
       mode: input.mode,
-      charts: input.charts,
-      traces: input.traces,
-      knowledgeSources: input.knowledgeSources,
       createdAt: nowIso(),
     };
+    if (input.charts) message.charts = input.charts;
+    if (input.traces) message.traces = input.traces;
+    if (input.knowledgeSources) message.knowledgeSources = input.knowledgeSources;
     await ref.set(message);
     return message;
   }

@@ -14,7 +14,7 @@ export function ModeSelector({ value, onChange, disabled }: ModeSelectorProps) {
   const modes: { id: AiMode; label: string; icon: React.ReactNode }[] = [
     {
       id: "auto",
-      label: "自動",
+      label: "一般",
       icon: <Sparkles className="h-3.5 w-3.5" />,
     },
     {

@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const userId = session!.user?.email;
+  const userId = session?.user?.email ?? (process.env.NODE_ENV === "development" ? "dev@local" : null);
   if (!userId) {
     return Response.json(
       { error: { code: "UNAUTHORIZED", message: "無法識別使用者" } },

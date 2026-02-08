@@ -5,7 +5,7 @@ export type LogLevel = "info" | "warn" | "error";
 export type AiLogEntry = {
   level: LogLevel;
   correlationId: string;
-  module: "ai_expert" | "knowledge_rag" | "deep_research" | "org_memory";
+  module: "ai_expert" | "knowledge_rag" | "deep_research" | "org_memory" | "db_ops";
   action: "chat" | "query" | "embed" | "pdf" | "reindex" | "usage" | "embed_chunks" | "search" | "ingest" | "summarize";
   userId?: string;
   model?: string;
