@@ -4,10 +4,13 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText, embed } from "ai";
 
-// Main model: prefer Google AI Studio (Gemini 3 Pro) if API key available, else Vertex AI
-const MAIN_MODEL_ID = (process.env.MAIN_MODEL_ID || "gemini-3-pro-preview") as string;
-// Fast model: Vertex AI Flash (kept as fallback, all primary tasks now use Pro)
-const FAST_MODEL_ID = (process.env.VERTEX_FAST_MODEL_ID || "gemini-3-flash-preview") as string;
+// Main model: prefer Google AI Studio (Gemini 3.1 Pro) if API key available, else Vertex AI
+const MAIN_MODEL_ID = (process.env.MAIN_MODEL_ID || "gemini-3.1-pro-preview") as string;
+// Fast model:
+// - Prefer AI Studio Flash when API key is available
+// - Fallback to Vertex Flash when running on Vertex-only credentials
+const FAST_MODEL_ID = (process.env.FAST_MODEL_ID || "gemini-3-flash-preview") as string;
+const VERTEX_FAST_MODEL_ID = (process.env.VERTEX_FAST_MODEL_ID || "gemini-2.5-flash") as string;
 const EMBEDDING_MODEL_ID = "text-embedding-005" as const;
 
 // --- Vertex AI (for Flash + embeddings) ---
@@ -25,7 +28,7 @@ function getVertex() {
   return vertexInstance;
 }
 
-// --- Google AI Studio (for Gemini 3 Pro) ---
+// --- Google AI Studio (for Gemini 3.1 Pro) ---
 let googleAiInstance: ReturnType<typeof createGoogleGenerativeAI> | null = null;
 
 function getGoogleAi() {
@@ -38,7 +41,7 @@ function getGoogleAi() {
   return googleAiInstance;
 }
 
-/** Main chat model — Gemini 3 Pro via Google AI Studio, fallback to Vertex AI */
+/** Main chat model — Gemini 3.1 Pro via Google AI Studio, fallback to Vertex AI */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getChatModel(): any {
   if (process.env.GEMINI_API_KEY) {
@@ -48,9 +51,13 @@ export function getChatModel(): any {
   return getVertex()(process.env.VERTEX_MODEL_ID || "gemini-2.5-pro");
 }
 
-/** Fast model for classification, SQL gen, title gen — Vertex AI Flash */
-export function getFastModel(): ReturnType<ReturnType<typeof createVertex>> {
-  return getVertex()(FAST_MODEL_ID);
+/** Fast model — now also uses Gemini 3 Pro for better accuracy */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getFastModel(): any {
+  if (process.env.GEMINI_API_KEY) {
+    return getGoogleAi()(MAIN_MODEL_ID);
+  }
+  return getVertex()(process.env.VERTEX_MODEL_ID || "gemini-2.5-pro");
 }
 
 export function getEmbeddingModel() {
