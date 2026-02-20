@@ -1,0 +1,31 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal:$SHORT_SHA'
+      - '-t'
+      - 'asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal:latest'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal']
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'ragic-edp-portal'
+      - '--image=asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal:$SHORT_SHA'
+      - '--region=asia-east1'
+      - '--platform=managed'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--min-instances=0'
+      - '--max-instances=3'
+      - '--concurrency=80'
+      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,BIGQUERY_DATASET=erp_backup,BIGQUERY_LOCATION=asia-east1,GOOGLE_VERTEX_PROJECT=$PROJECT_ID,GOOGLE_VERTEX_LOCATION=us-central1,PORTAL_DATA_PROVIDER_MODE=real,PORTAL_DEV_BYPASS_AUTH=false,NEXTAUTH_URL=https://ragic-edp-portal-571015722523.asia-east1.run.app,PORTAL_ADMIN_EMAILS=gamepig1976@gmail.com,AUTH_TRUST_HOST=true,MAIN_MODEL_ID=gemini-3.1-pro-preview'
+      - '--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,NEXTAUTH_SECRET=nextauth-secret:latest,AUTH_SECRET=nextauth-secret:latest'
+
+images:
+  - 'asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal'
