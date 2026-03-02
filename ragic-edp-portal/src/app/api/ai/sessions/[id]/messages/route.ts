@@ -20,7 +20,7 @@ export async function GET(
     );
   }
 
-  const userId = session?.user?.email ?? (process.env.NODE_ENV === "development" ? "dev@local" : "unknown");
+  const userId = session?.user?.email ?? "dev@local";
   const { id: sessionId } = await params;
 
   // Verify ownership

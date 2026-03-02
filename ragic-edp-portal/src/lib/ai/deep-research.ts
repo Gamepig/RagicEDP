@@ -1,7 +1,7 @@
 import "server-only";
 
 import { generateText } from "ai";
-import { getChatModel } from "./vertex-client";
+import { getChatModel, getFastModel } from "./vertex-client";
 import { generateSql, executeBqQuery, recommendChartType } from "./sql-generator";
 import { searchKnowledge, formatKnowledgeContext } from "./knowledge-rag";
 import { AiKnowledgeRepository } from "@/lib/firestore/ai-knowledge.repo";
@@ -44,9 +44,10 @@ export async function runDeepResearch(
   // Step 1: Decompose topic into sub-questions
   onProgress("decomposing_topic", 1, RESEARCH_STEPS);
 
-  // Use Pro model for decomposition — needs to understand user intent accurately
+  // Use fast model for decomposition to reduce time-to-first-result
   const decomposition = await generateText({
-    model: getChatModel(),
+    model: getFastModel(),
+    temperature: 0.3,
     system: `你是研究規劃助手。將使用者的研究主題拆解為 3-5 個具體的、可用 SQL 查詢回答的子問題。
 
 規則：
@@ -66,7 +67,7 @@ export async function runDeepResearch(
 - 本季總營收是多少？（只回傳一個數字）
 - 新客戶的回購率？（偏離主題且只有一個數字）`,
     prompt: topic,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 768,
   } as Parameters<typeof generateText>[0]);
 
   const subQuestions = decomposition.text
@@ -136,10 +137,11 @@ export async function runDeepResearch(
       if (matchingData && matchingData.data.length > 0) {
         sectionPrompt = `使用者的研究主題是：「${topic}」
 針對子問題「${q}」，根據以下從公司資料庫查詢到的真實數據撰寫數據分析段落（300-600字）。
-重要：只基於提供的數據進行分析，不要編造任何數字。分析必須回扣使用者的原始研究主題。回答要完整，不要中途截斷。
+重要：只基於提供的數據進行分析，不要編造任何數字。分析必須回扣使用者的原始研究主題。
+注意輸出 token 有限，請控制在 400-800 字內，確保內容完整不被截斷。優先寫結論和關鍵洞察，避免冗長鋪陳。
 
 查詢到的數據（共 ${matchingData.data.length} 筆，顯示前 20 筆）：
-${JSON.stringify(matchingData.data.slice(0, 20), null, 2)}`;
+${JSON.stringify(matchingData.data.slice(0, 20))}`;
 
         // Only generate chart if data has >= 2 rows (single value charts are meaningless)
         if (matchingData.data.length >= 2) {
@@ -165,11 +167,12 @@ ${JSON.stringify(matchingData.data.slice(0, 20), null, 2)}`;
           sectionCharts = [chart];
         }
       } else {
-        sectionPrompt = `針對「${q}」，目前資料庫沒有直接相關的數據。請基於行銷專業知識提供分析觀點（300-600字），但明確說明此段落為專業見解而非數據分析結果。回答要完整，不要中途截斷。`;
+        sectionPrompt = `針對「${q}」，目前資料庫沒有直接相關的數據。請基於行銷專業知識提供分析觀點（300-600字），但明確說明此段落為專業見解而非數據分析結果。控制字數確保完整輸出。`;
       }
 
       const sectionResult = await generateText({
-        model: getChatModel(),
+        model: getFastModel(),
+        temperature: 0.3,
         system: systemPrompt,
         prompt: sectionPrompt,
         maxOutputTokens: 8192,
@@ -186,10 +189,11 @@ ${JSON.stringify(matchingData.data.slice(0, 20), null, 2)}`;
   // Step 5: Generate summary
   onProgress("generating_summary", 5, RESEARCH_STEPS);
 
-  const summaryPrompt = `基於以下研究段落，撰寫一段綜合結論與行動建議（300-500字）：\n\n${sections.map((s) => `## ${s.heading}\n${s.contentMarkdown}`).join("\n\n")}`;
+  const summaryPrompt = `基於以下研究段落，撰寫綜合結論與行動建議（500-1000字）。確保內容完整，包含關鍵發現和具體建議：\n\n${sections.map((s) => `## ${s.heading}\n${s.contentMarkdown}`).join("\n\n")}`;
 
   const summaryResult = await generateText({
     model: getChatModel(),
+    temperature: 0.3,
     system: systemPrompt,
     prompt: summaryPrompt,
     maxOutputTokens: 8192,

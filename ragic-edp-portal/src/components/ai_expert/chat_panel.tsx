@@ -9,13 +9,37 @@ import { useI18n } from "@/lib/i18n/i18n";
 import { ChartRenderer } from "./chart_renderer";
 import { PdfExportButton } from "./pdf_export_button";
 
+/** Strip AI chart-type tags that shouldn't be shown to users */
+function stripChartTags(text: string): string {
+  return text
+    .replace(/\n?\[CHART_TYPE[：:]?\s*[a-z_]+\s*\]/gi, "")
+    .replace(/\n?建議圖表[：:].*/g, "")
+    .trim();
+}
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
+  progressStep?: string;
   knowledgeSources?: AiKnowledgeSourceV1[];
   charts?: AiChartDataV1[];
+};
+
+const PROGRESS_LABELS: Record<string, string> = {
+  classifying_intent: "正在分析問題類型...",
+  generating_sql: "正在生成查詢語句...",
+  querying_database: "正在查詢資料庫...",
+  rendering_chart: "正在渲染圖表...",
+  generating_analysis: "正在生成分析報告...",
+  decomposing_topic: "正在拆解研究主題...",
+  searching_knowledge: "正在搜尋知識庫...",
+  generating_sections: "正在撰寫各章節...",
+  generating_summary: "正在撰寫總結...",
+  planning_ragic_query: "正在規劃 Ragic 查詢...",
+  querying_ragic: "正在查詢 Ragic 即時資料...",
+  complete: "完成",
 };
 
 type TraceData = {
@@ -57,8 +81,29 @@ export function ChatPanel({
   const [prompt, setPrompt] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [mode, setMode] = useState<"auto" | "deep_research">("auto");
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const handlePinChart = useCallback(async (chart: AiChartDataV1) => {
+    if (pinnedIds.has(chart.chartId)) return;
+    try {
+      const ref = chart.ref ?? { kind: "saved" as const, savedChartId: chart.chartId };
+      const res = await fetch(`/api/ai/charts/${chart.chartId}/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref, title: chart.title, chartData: chart }),
+      });
+      if (!res.ok) throw new Error("pin failed");
+      const result = await res.json();
+      setPinnedIds((prev) => new Set(prev).add(chart.chartId));
+      if (result.duplicated) {
+        alert("此圖表已釘選過");
+      }
+    } catch {
+      alert("釘選失敗，請稍後再試");
+    }
+  }, [pinnedIds]);
 
   // Load initial messages when switching to an existing session
   useEffect(() => {
@@ -68,6 +113,8 @@ export function ChatPanel({
           id: m.messageId,
           role: m.role,
           content: m.content,
+          charts: m.charts,
+          knowledgeSources: m.knowledgeSources,
         }))
       );
     }
@@ -123,10 +170,13 @@ export function ChatPanel({
 
       if (!res.ok) {
         const err = await res.json();
+        const errMsg = err?.error?.detail
+          ? `${err.error?.message ?? "錯誤"}\n(${err.error.detail})`
+          : err.error?.message ?? "錯誤";
         setMessages((prev) =>
           prev.map((m) =>
             m.id === asstId
-              ? { ...m, content: err.error?.message ?? "錯誤", streaming: false }
+              ? { ...m, content: errMsg, streaming: false }
               : m
           )
         );
@@ -176,11 +226,18 @@ export function ChatPanel({
               } else if (eventName === "chart") {
                 if (onChartReceived) onChartReceived(data);
                 setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === asstId
-                      ? { ...m, charts: [...(m.charts ?? []), data] }
-                      : m
-                  )
+                  prev.map((m) => {
+                    if (m.id !== asstId) return m;
+                    const existing = m.charts ?? [];
+                    // Replace chart with same chartId (re-emit), otherwise append
+                    const idx = existing.findIndex((c: { chartId: string }) => c.chartId === data.chartId);
+                    if (idx >= 0) {
+                      const updated = [...existing];
+                      updated[idx] = data;
+                      return { ...m, charts: updated };
+                    }
+                    return { ...m, charts: [...existing, data] };
+                  })
                 );
               } else if (eventName === "trace" && onTraceReceived) {
                 onTraceReceived(data);
@@ -196,10 +253,26 @@ export function ChatPanel({
                 );
               } else if (eventName === "error") {
                 setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id !== asstId) return m;
+                    // Preserve already-streamed content; append error notice instead of overwriting
+                    const existing = (m.content ?? "").trim();
+                    const errNotice = `\n\n---\n⚠️ ${data.message}`;
+                    return {
+                      ...m,
+                      content: existing ? existing + errNotice : data.message,
+                      streaming: false,
+                    };
+                  })
+                );
+              } else if (eventName === "progress") {
+                // model_fallback / model_waiting use custom message from server
+                const label = (data.step === "model_fallback" || data.step === "model_waiting")
+                  ? data.message
+                  : PROGRESS_LABELS[data.step] || `處理中 (${data.current}/${data.total})...`;
+                setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === asstId
-                      ? { ...m, content: data.message, streaming: false }
-                      : m
+                    m.id === asstId ? { ...m, progressStep: label } : m
                   )
                 );
               }
@@ -269,13 +342,13 @@ export function ChatPanel({
                 {m.charts && m.charts.length > 0 && (
                   <div className="mb-3 space-y-3">
                     {m.charts.map((chart) => (
-                      <ChartRenderer key={chart.chartId} chart={chart} onPin={() => {}} />
+                      <ChartRenderer key={chart.chartId} chart={chart} onPin={handlePinChart} pinned={pinnedIds.has(chart.chartId)} />
                     ))}
                   </div>
                 )}
                 {m.role === "assistant" ? (
                   <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripChartTags(m.content)}</ReactMarkdown>
                   </div>
                 ) : (
                   <div className="whitespace-pre-wrap">{m.content}</div>
@@ -285,7 +358,9 @@ export function ChatPanel({
                     <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
                     <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
                     <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-primary" />
-                    <span className="ml-2 text-xs text-muted-foreground">思考中...</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {m.progressStep || "思考中..."}
+                    </span>
                   </div>
                 )}
                 {m.knowledgeSources && m.knowledgeSources.length > 0 && (

@@ -255,6 +255,7 @@ export function DbOpsOverview(props: { initialSchema: ResultV0<DbOpsSchemaV0> })
   const [prompt, setPrompt] = useState("");
   const [nlResult, setNlResult] = useState<{ sql: string; explanation: string } | null>(null);
   const [nlError, setNlError] = useState<string | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
   const [sqlResult, setSqlResult] = useState<ResultV0<DbOpsSqlResultV0> | null>(null);
   const [sqlPage, setSqlPage] = useState(1);
 
@@ -288,6 +289,13 @@ export function DbOpsOverview(props: { initialSchema: ResultV0<DbOpsSchemaV0> })
     setSqlResult(sqlRes);
     setNlLoading(false);
   }, [prompt, nlLoading]);
+
+  const onCopySql = useCallback(async () => {
+    if (!nlResult?.sql) return;
+    await navigator.clipboard.writeText(nlResult.sql);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 1200);
+  }, [nlResult]);
 
   const onSelectTable = useCallback(async (node: SchemaNodeV0) => {
     setSelectedTable(node.name);
@@ -390,9 +398,14 @@ export function DbOpsOverview(props: { initialSchema: ResultV0<DbOpsSchemaV0> })
               <div className="mt-4 rounded-lg border bg-muted/30 p-3">
                 <div className="flex items-center justify-between">
                   <div className="text-[10px] font-medium uppercase text-muted-foreground">生成的 SQL</div>
-                  <button onClick={() => { setNlResult(null); setSqlResult(null); setNlError(null); }} className="text-[10px] text-muted-foreground hover:text-foreground">
-                    清除
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={onCopySql} className="text-[10px] text-muted-foreground hover:text-foreground">
+                      {copiedSql ? "已複製" : "複製 SQL"}
+                    </button>
+                    <button onClick={() => { setNlResult(null); setSqlResult(null); setNlError(null); }} className="text-[10px] text-muted-foreground hover:text-foreground">
+                      清除
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-1 text-xs font-mono text-muted-foreground break-all">{nlResult.sql}</div>
               </div>

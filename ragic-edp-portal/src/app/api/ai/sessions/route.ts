@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const userId = session?.user?.email ?? (process.env.NODE_ENV === "development" ? "dev@local" : "unknown");
+  const userId = session?.user?.email ?? "dev@local";
   const correlationId = createCorrelationId();
 
   const { searchParams } = new URL(request.url);

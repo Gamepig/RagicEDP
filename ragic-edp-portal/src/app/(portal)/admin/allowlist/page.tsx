@@ -1,14 +1,12 @@
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/auth";
-import { requireAuthorized } from "@/lib/auth/authorize";
-import { addToAllowlist, getAllowlist, removeFromAllowlist } from "@/lib/firestore/allowlist.repo";
+import { requireAdmin } from "@/lib/auth/authorize";
+import { addToAllowlist, deleteFromAllowlist, getAllowlist } from "@/lib/firestore/allowlist.repo";
+import { createOrResetEmailUserFromAllowlist, deleteUsersByEmail } from "@/lib/firestore/user.repo";
 
 export const dynamic = "force-dynamic";
-
-async function requireAdmin() {
-  const session = await auth();
-  requireAuthorized(session, "/admin/allowlist");
-}
+const PROTECTED_SUPER_ADMIN_EMAIL = "gamepig1976@gmail.com";
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-background p-4 shadow-sm">{children}</div>;
@@ -16,28 +14,43 @@ function Card({ children }: { children: React.ReactNode }) {
 
 async function addAllowlistAction(formData: FormData) {
   "use server";
-  await requireAdmin();
+  const session = requireAdmin(await auth(), "/admin/allowlist");
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return;
   await addToAllowlist(email);
+  const actorEmail = session?.user?.email ?? "system";
+  const generated = await createOrResetEmailUserFromAllowlist(email, actorEmail);
   revalidatePath("/admin/allowlist");
+  redirect(`/admin/allowlist?generatedEmail=${encodeURIComponent(email)}&generatedPassword=${encodeURIComponent(generated.password)}`);
 }
 
 async function removeAllowlistAction(formData: FormData) {
   "use server";
-  await requireAdmin();
+  const session = requireAdmin(await auth(), "/admin/allowlist");
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return;
-  await removeFromAllowlist(email);
+  const normalizedEmail = email.toLowerCase();
+  const actorEmail = session.user?.email?.toLowerCase() ?? "";
+  if (normalizedEmail === PROTECTED_SUPER_ADMIN_EMAIL && actorEmail !== PROTECTED_SUPER_ADMIN_EMAIL) return;
+  await Promise.all([deleteFromAllowlist(normalizedEmail), deleteUsersByEmail(normalizedEmail)]);
   revalidatePath("/admin/allowlist");
 }
 
-export default async function AllowlistPage() {
-  await requireAdmin();
+export default async function AllowlistPage(props: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const session = requireAdmin(await auth(), "/admin/allowlist");
+  const viewerEmail = session.user?.email?.toLowerCase() ?? "";
+  const canViewProtected = viewerEmail === PROTECTED_SUPER_ADMIN_EMAIL;
+  const searchParams = (await props.searchParams) ?? {};
+  const generatedEmail = typeof searchParams.generatedEmail === "string" ? searchParams.generatedEmail : "";
+  const generatedPassword = typeof searchParams.generatedPassword === "string" ? searchParams.generatedPassword : "";
 
-  const entries = await getAllowlist();
-  const allowedCount = entries.filter((entry) => entry.status === "allowed").length;
-  const revokedCount = entries.length - allowedCount;
+  const allEntries = await getAllowlist();
+  const entries = canViewProtected
+    ? allEntries
+    : allEntries.filter((entry) => entry.email.toLowerCase() !== PROTECTED_SUPER_ADMIN_EMAIL);
+  const allowedCount = entries.length;
 
   return (
     <div className="space-y-6">
@@ -47,12 +60,26 @@ export default async function AllowlistPage() {
       </div>
 
       <Card>
+        {generatedPassword && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+            <div className="font-medium text-amber-900">一次性初始密碼（請立即交付使用者）</div>
+            <div className="mt-1 text-amber-800">
+              Email: <span className="font-mono">{generatedEmail}</span>
+            </div>
+            <div className="mt-1 text-amber-800">
+              Password: <span className="font-mono">{generatedPassword}</span>
+            </div>
+          </div>
+        )}
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-xs font-medium uppercase text-muted-foreground">Summary</div>
             <div className="mt-1 text-sm text-muted-foreground">
-              {entries.length} total / {allowedCount} allowed / {revokedCount} revoked
+              {entries.length} total / {allowedCount} allowed
             </div>
+            <a className="mt-2 inline-block text-xs text-primary underline" href="/admin/users">
+              前往使用者管理
+            </a>
           </div>
 
           <form action={addAllowlistAction} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -100,21 +127,17 @@ export default async function AllowlistPage() {
                 entries.map((entry) => (
                   <tr key={entry.email} className="border-t hover:bg-muted/30">
                     <td className="px-4 py-3 font-mono text-xs">{entry.email}</td>
-                    <td className="px-4 py-3 text-sm">{entry.status === "allowed" ? "Allowed" : "Revoked"}</td>
+                    <td className="px-4 py-3 text-sm">Allowed</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{entry.updatedAt ?? entry.createdAt}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{entry.updatedBy ?? entry.createdBy}</td>
                     <td className="px-4 py-3">
-                      <form action={entry.status === "allowed" ? removeAllowlistAction : addAllowlistAction}>
+                      <form action={removeAllowlistAction}>
                         <input type="hidden" name="email" value={entry.email} />
                         <button
                           type="submit"
-                          className={
-                            entry.status === "allowed"
-                              ? "inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted/50"
-                              : "inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
-                          }
+                          className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted/50"
                         >
-                          {entry.status === "allowed" ? "Remove" : "Allow"}
+                          Remove
                         </button>
                       </form>
                     </td>

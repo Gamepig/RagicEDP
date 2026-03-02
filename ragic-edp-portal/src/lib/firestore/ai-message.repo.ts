@@ -41,7 +41,8 @@ export class AiMessageRepository {
     if (input.charts) message.charts = input.charts;
     if (input.traces) message.traces = input.traces;
     if (input.knowledgeSources) message.knowledgeSources = input.knowledgeSources;
-    await ref.set(message);
+    // Strip undefined values — Firestore rejects them
+    await ref.set(JSON.parse(JSON.stringify(message)));
     return message;
   }
 

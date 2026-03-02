@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env*
+*.md
+docs
+scripts
+services
+.claude
+opencode.json
+tsconfig.tsbuildinfo
+firestore.rules
+CLAUDE.md
+specs
+.DS_Store
+**/.DS_Store

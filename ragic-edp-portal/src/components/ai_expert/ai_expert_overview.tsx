@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { PanelLeftOpen, PanelRightOpen, PanelLeftClose, PanelRightClose } from "lucide-react";
-import type { AiMessageV1 } from "@/lib/data/types";
+import type { AiChartDataV1, AiMessageV1 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
 import { ChatPanel } from "./chat_panel";
 import { ResearchReport, type ResearchSection } from "./research_report";
@@ -28,6 +28,20 @@ export function AiExpertOverview() {
   const [lastMessageId, setLastMessageId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showRight, setShowRight] = useState(false);
+
+  const handlePinChart = useCallback(async (chart: AiChartDataV1) => {
+    try {
+      const ref = chart.ref ?? { kind: "saved" as const, savedChartId: chart.chartId };
+      const res = await fetch(`/api/ai/charts/${chart.chartId}/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref, title: chart.title, chartData: chart }),
+      });
+      if (!res.ok) throw new Error("pin failed");
+    } catch {
+      alert("釘選失敗，請稍後再試");
+    }
+  }, []);
 
   const handleSelectSession = useCallback(async (sessionId: string) => {
     setActiveSessionId(sessionId);
@@ -74,12 +88,28 @@ export function AiExpertOverview() {
     setRefreshKey((k) => k + 1);
   }, []);
 
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/ai/sessions/${sessionId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      if (activeSessionId === sessionId) {
+        handleNewSession();
+      }
+      setRefreshKey((k) => k + 1);
+    } catch {
+      alert("刪除失敗，請稍後再試");
+    }
+  }, [activeSessionId, handleNewSession]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("ai.title")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("ai.subtitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("ai.subtitle")}
+            <span className="ml-2 text-xs text-muted-foreground/60">{process.env.NEXT_PUBLIC_APP_VERSION}</span>
+          </p>
         </div>
         <div className="flex gap-1">
           <button
@@ -120,6 +150,7 @@ export function AiExpertOverview() {
               activeSessionId={activeSessionId}
               onSelectSession={handleSelectSession}
               onNewSession={handleNewSession}
+              onDeleteSession={handleDeleteSession}
               refreshKey={refreshKey}
             />
           </div>
@@ -148,7 +179,7 @@ export function AiExpertOverview() {
                 summary={researchSummary}
                 sessionId={activeSessionId}
                 messageId={lastMessageId}
-                onPinChart={() => {}}
+                onPinChart={handlePinChart}
               />
             )}
             <ResultPanel

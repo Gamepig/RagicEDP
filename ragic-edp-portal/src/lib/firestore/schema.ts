@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { applicationDefault, getApps, initializeApp } from "firebase-admin/app";
 import { Firestore, getFirestore } from "firebase-admin/firestore";
+import type { Timestamp } from "firebase-admin/firestore";
 
 import { PinnedWidgetV0, RFC3339String } from "../data/types";
 
@@ -9,9 +10,19 @@ export type FirestoreUserV0 = {
   schemaVersion: "v0";
   email: string;
   displayName?: string;
+  authProvider?: "google" | "email";
+  role?: "admin" | "user";
+  status?: "active" | "suspended";
+  isSuperAdmin?: boolean;
+  visibilityProtected?: boolean;
+  passwordHash?: string;
+  mustChangePassword?: boolean;
   theme?: "light" | "dark" | "system";
   lastLoginAt?: RFC3339String;
   createdAt: RFC3339String;
+  createdBy?: string;
+  updatedAt?: RFC3339String;
+  updatedBy?: string;
 };
 
 export type FirestoreAllowlistUserV0 = {
@@ -48,6 +59,18 @@ export type FirestoreChatMessageV0 = {
   contentMarkdown: string;
   createdAt: RFC3339String;
   aiOutput?: { schemaVersion: "v0" };
+};
+
+export type FirestoreActivityLogV0 = {
+  schemaVersion: "v0";
+  userId: string;
+  email: string;
+  type: "login" | "page_view";
+  authProvider?: "google" | "email";
+  path?: string;
+  userAgent?: string;
+  timestamp: RFC3339String;
+  expiresAt: Timestamp;
 };
 
 const ALLOWLIST_COLLECTION = "allowlist_users";

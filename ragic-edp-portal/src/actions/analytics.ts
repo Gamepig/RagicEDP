@@ -10,10 +10,16 @@ async function requireAuthorizedSession() {
   assertAuthorized(session);
 }
 
-export async function getDashboardStats(input: { dateRange: { from: string; to: string } }) {
+export async function getDashboardStats(input: { dateRange: { from: string; to: string }; revenueField?: "net" | "with_shipping"; brand?: string }) {
   await requireAuthorizedSession();
   const repos = getRepositories();
   return repos.analytics.getDashboardStats(input);
+}
+
+export async function getBrandList() {
+  await requireAuthorizedSession();
+  const repos = getRepositories();
+  return repos.analytics.getBrandList();
 }
 
 export async function getChartData(input: { chartId: string; filters: ChartFiltersV0 }) {
@@ -45,14 +51,95 @@ export async function getMultipleChartData(input: {
   return Object.fromEntries(results.map(({ chartId, result }) => [chartId, result]));
 }
 
-export async function pinWidget(input: { userId: string; chartId: string }) {
-  await requireAuthorizedSession();
+export async function pinWidget(input: { chartId: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
   const repos = getRepositories();
-  return repos.analytics.pinWidget(input);
+  return repos.analytics.pinWidget({ userId, chartId: input.chartId });
 }
 
-export async function unpinWidget(input: { userId: string; chartId: string }) {
-  await requireAuthorizedSession();
+export async function unpinWidget(input: { chartId: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
   const repos = getRepositories();
-  return repos.analytics.unpinWidget(input);
+  return repos.analytics.unpinWidget({ userId, chartId: input.chartId });
+}
+
+export async function unpinByWidgetId(input: { widgetId: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
+  const repos = getRepositories();
+  return repos.analytics.unpinByWidgetId({ userId, widgetId: input.widgetId });
+}
+
+export async function reorderPinnedWidgets(input: { widgetIdsInOrder: string[] }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
+  const repos = getRepositories();
+  return repos.analytics.reorderPinnedWidgets({ userId, widgetIdsInOrder: input.widgetIdsInOrder });
+}
+
+export async function updatePinnedWidget(input: { widgetId: string; titleOverride?: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
+  const repos = getRepositories();
+  return repos.analytics.updatePinnedWidget({
+    userId,
+    widgetId: input.widgetId,
+    titleOverride: input.titleOverride,
+  });
+}
+
+export async function createCustomChart(input: { chartId: string; titleOverride?: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
+  const repos = getRepositories();
+
+  const pinResult = await repos.analytics.pinWidget({ userId, chartId: input.chartId });
+  if (!pinResult.ok) return pinResult;
+
+  const listResult = await repos.analytics.listPinnedWidgets({ userId });
+  if (!listResult.ok) return listResult;
+  const widget = listResult.data.find((w) => w.ref.kind === "catalog" && w.ref.chartId === input.chartId);
+  if (!widget) {
+    return { ok: false as const, error: { code: "WIDGET_NOT_FOUND", message: "Widget was not created" } };
+  }
+
+  if (input.titleOverride?.trim()) {
+    const updateResult = await repos.analytics.updatePinnedWidget({
+      userId,
+      widgetId: widget.widgetId,
+      titleOverride: input.titleOverride,
+    });
+    if (!updateResult.ok) return updateResult;
+    return { ok: true as const, data: { ...widget, titleOverride: input.titleOverride.trim() } };
+  }
+
+  return { ok: true as const, data: widget };
+}
+
+export async function updateCustomChart(input: { widgetId: string; titleOverride?: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
+  const repos = getRepositories();
+  return repos.analytics.updatePinnedWidget({
+    userId,
+    widgetId: input.widgetId,
+    titleOverride: input.titleOverride,
+  });
+}
+
+export async function deleteCustomChart(input: { widgetId: string }) {
+  const session = await auth();
+  assertAuthorized(session);
+  const userId = session.user?.email ?? "dev@local";
+  const repos = getRepositories();
+  return repos.analytics.unpinByWidgetId({ userId, widgetId: input.widgetId });
 }

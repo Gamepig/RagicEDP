@@ -20,7 +20,7 @@ export async function GET(
     );
   }
 
-  const userId = session?.user?.email ?? (process.env.NODE_ENV === "development" ? "dev@local" : null);
+  const userId = session?.user?.email ?? "dev@local";
   if (!userId) {
     return Response.json(
       { error: { code: "UNAUTHORIZED", message: "無法識別使用者" } },

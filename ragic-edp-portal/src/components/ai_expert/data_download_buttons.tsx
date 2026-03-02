@@ -5,6 +5,7 @@ import type { AiChartDataV1 } from "@/lib/data/types";
 
 type DataDownloadButtonsProps = {
   chart: AiChartDataV1;
+  chartRef?: React.RefObject<HTMLDivElement | null>;
 };
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -55,7 +56,58 @@ export async function handleDownloadExcel(chart: AiChartDataV1) {
   downloadBlob(blob, `${sanitizeFilename(chart.title)}.xlsx`);
 }
 
-export function DataDownloadButtons({ chart }: DataDownloadButtonsProps) {
+function inlineComputedStyles(source: HTMLElement, target: HTMLElement) {
+  const srcEls = [source, ...Array.from(source.querySelectorAll<HTMLElement>("*"))];
+  const tgtEls = [target, ...Array.from(target.querySelectorAll<HTMLElement>("*"))];
+  srcEls.forEach((srcEl, idx) => {
+    const tgtEl = tgtEls[idx];
+    if (!tgtEl) return;
+    const style = window.getComputedStyle(srcEl);
+    let cssText = "";
+    for (let i = 0; i < style.length; i++) {
+      const prop = style[i];
+      cssText += `${prop}:${style.getPropertyValue(prop)};`;
+    }
+    tgtEl.setAttribute("style", cssText);
+  });
+}
+
+async function handleDownloadPng(target: HTMLElement, title: string) {
+  const width = Math.max(1, Math.round(target.clientWidth));
+  const height = Math.max(1, Math.round(target.clientHeight));
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const clonedNode = target.cloneNode(true) as HTMLElement;
+  inlineComputedStyles(target, clonedNode);
+  const wrappedSvg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+      <foreignObject x="0" y="0" width="100%" height="100%">
+        ${new XMLSerializer().serializeToString(clonedNode)}
+      </foreignObject>
+    </svg>
+  `;
+  const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(wrappedSvg)}`;
+  await new Promise<void>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0, width, height); resolve(); };
+    img.onerror = () => reject(new Error("image_load_failed"));
+    img.src = dataUrl;
+  });
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) return;
+  downloadBlob(blob, `${sanitizeFilename(title)}.png`);
+}
+
+export function DataDownloadButtons({ chart, chartRef }: DataDownloadButtonsProps) {
   if (!chart.data || chart.data.length === 0) return null;
 
   return (
@@ -76,6 +128,16 @@ export function DataDownloadButtons({ chart }: DataDownloadButtonsProps) {
         <Download className="h-3 w-3" />
         Excel
       </button>
+      {chartRef && (
+        <button
+          type="button"
+          onClick={() => chartRef.current && handleDownloadPng(chartRef.current, chart.title)}
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] hover:bg-muted/50"
+        >
+          <Download className="h-3 w-3" />
+          PNG
+        </button>
+      )}
     </div>
   );
 }

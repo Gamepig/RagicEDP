@@ -10,6 +10,9 @@ export type EnvConfigV0 = {
   googleVertexProject?: string;
   googleVertexLocation?: string;
 
+  ragicApiKey?: string;
+  ragicBaseUrl: string;
+
   portalAdminEmails: string[];
   dataProviderMode: "mock" | "real";
 };
@@ -39,7 +42,8 @@ function readRequiredEnv(name: string, allowEmptyInBuild = false): string {
 
 export function loadAuthEnvConfigV0(): AuthEnvConfigV0 {
   const portalDevBypassAuth = process.env.PORTAL_DEV_BYPASS_AUTH === "true";
-  const isDevBypassAuth = portalDevBypassAuth && process.env.NODE_ENV === "development";
+  // TODO: remove NODE_ENV check once OAuth is configured
+  const isDevBypassAuth = portalDevBypassAuth;
 
   const googleClientId = isDevBypassAuth
     ? process.env.GOOGLE_CLIENT_ID || "dev-bypass-google-client-id"
@@ -83,6 +87,8 @@ export function loadEnvConfigV0(): EnvConfigV0 {
     nextAuthSecret: authEnv.nextAuthSecret,
     googleVertexProject: process.env.GOOGLE_VERTEX_PROJECT,
     googleVertexLocation: process.env.GOOGLE_VERTEX_LOCATION,
+    ragicApiKey: process.env.RAGIC_API_KEY,
+    ragicBaseUrl: process.env.RAGIC_BASE_URL || "https://ap6.ragic.com/grefun",
     portalAdminEmails: authEnv.portalAdminEmails,
     dataProviderMode,
   };

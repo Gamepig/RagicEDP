@@ -6,7 +6,7 @@ export type AiLogEntry = {
   level: LogLevel;
   correlationId: string;
   module: "ai_expert" | "knowledge_rag" | "deep_research" | "org_memory" | "db_ops";
-  action: "chat" | "query" | "embed" | "pdf" | "reindex" | "usage" | "embed_chunks" | "search" | "ingest" | "summarize";
+  action: "chat" | "query" | "embed" | "pdf" | "reindex" | "usage" | "embed_chunks" | "search" | "ingest" | "summarize" | "ragic_query" | "rolling_summary";
   userId?: string;
   model?: string;
   bytesProcessed?: number;

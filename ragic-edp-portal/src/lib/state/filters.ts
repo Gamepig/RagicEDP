@@ -1,4 +1,4 @@
-import { ChartFiltersV0, DateRangeV0 } from "../data/types";
+import { ChartFiltersV0, DateRangeV0, type RevenueField } from "../data/types";
 
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -6,8 +6,7 @@ function toIsoDate(d: Date): string {
 
 export function defaultDateRangeV0(now = new Date()): DateRangeV0 {
   const from = new Date(now);
-  from.setMonth(from.getMonth() - 6);
-  from.setDate(1);
+  from.setDate(1); // 當月 1 號
   return { from: toIsoDate(from), to: toIsoDate(now) };
 }
 
@@ -21,6 +20,8 @@ export function filtersFromSearchParams(searchParams: URLSearchParams | Record<s
   const from = params.get("from");
   const to = params.get("to");
   const channel = params.get("channel");
+  const revenue = params.get("revenue");
+  const brand = params.get("brand");
 
   const defaultFilters = defaultFiltersV0();
 
@@ -30,6 +31,8 @@ export function filtersFromSearchParams(searchParams: URLSearchParams | Record<s
       to: to || defaultFilters.dateRange.to,
     },
     channel: channel || undefined,
+    revenueField: (revenue === "net" ? "net" : "with_shipping") as RevenueField,
+    brand: brand || undefined,
   };
 }
 
@@ -41,6 +44,12 @@ export function filtersToSearchParams(filters: ChartFiltersV0): URLSearchParams 
   
   if (filters.channel) {
     params.set("channel", filters.channel);
+  }
+  if (filters.revenueField && filters.revenueField !== "with_shipping") {
+    params.set("revenue", filters.revenueField);
+  }
+  if (filters.brand) {
+    params.set("brand", filters.brand);
   }
 
   return params;

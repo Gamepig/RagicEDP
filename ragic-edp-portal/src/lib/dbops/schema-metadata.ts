@@ -8,8 +8,9 @@ export const TABLE_META: Record<string, { zhName: string; description: string; c
   // ── 主要檢視表 (Views) ──
   v_customer_rfm:                       { zhName: "客戶 RFM 分析",          description: "客戶分群：購買頻率、最近購買、消費金額",   category: "analysis_view" },
   view_order_customer:                  { zhName: "訂單客戶關聯",            description: "已清洗的客戶欄位，最適合客戶分析",         category: "analysis_view" },
-  ls_v_orders_ext:                      { zhName: "訂單擴展 (含地區)",       description: "含縣市、區域、通路、訂單金額",             category: "analysis_view" },
+  ls_v_orders_ext:                      { zhName: "訂單擴展 (含地區)",       description: "含縣市、區域、訂單金額（無品牌/通路/商品欄位）", category: "analysis_view" },
   ls_v_order_lines:                     { zhName: "訂單明細行",              description: "訂單行項目含商品資訊",                     category: "analysis_view" },
+  ls_v_order_lines_ext:                 { zhName: "訂單明細擴展（最完整）",  description: "含品牌、通路、商品、物流、金流完整欄位",     category: "analysis_view" },
   v_daily_order_stats:                  { zhName: "每日訂單統計",            description: "每日彙總的訂單統計數據",                   category: "analysis_view" },
   ls_v_05_channel_contribution_trend:   { zhName: "通路貢獻趨勢",            description: "各通路營收貢獻隨時間變化",                 category: "analysis_view" },
   v_orders:                             { zhName: "訂單檢視",                description: "含客戶資訊的訂單檢視",                     category: "analysis_view" },

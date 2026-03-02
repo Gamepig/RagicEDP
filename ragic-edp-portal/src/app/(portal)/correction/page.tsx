@@ -1,4 +1,4 @@
-import { CorrectionOverview } from "@/components/correction/correction_overview";
+import { CorrectionDashboard } from "@/components/correction/correction_dashboard";
 import { auth } from "@/lib/auth/auth";
 import { requireAuthorized } from "@/lib/auth/authorize";
 import { getRepositories } from "@/lib/data/provider";
@@ -10,6 +10,6 @@ export default async function CorrectionPage() {
   requireAuthorized(session, "/correction");
 
   const repos = getRepositories();
-  const pending = await repos.correction.getPendingRecords({ page: 1, limit: 20 });
-  return <CorrectionOverview initialPending={pending} />;
+  const stats = await repos.correction.getStatistics();
+  return <CorrectionDashboard initialStats={stats} />;
 }

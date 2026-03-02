@@ -16,7 +16,7 @@ export type CreateSessionInput = {
 };
 
 export type UpdateSessionInput = Partial<
-  Pick<AiSessionV1, "title" | "summary" | "tags" | "conclusion" | "mode">
+  Pick<AiSessionV1, "title" | "summary" | "tags" | "conclusion" | "mode" | "rollingSummary">
 >;
 
 export class AiSessionRepository {
@@ -51,6 +51,22 @@ export class AiSessionRepository {
       ...data,
       updatedAt: nowIso(),
     });
+  }
+
+  async delete(sessionId: string, userId: string): Promise<void> {
+    const session = await this.get(sessionId);
+    if (!session) throw new Error("Session not found");
+    if (session.userId !== userId) throw new Error("Not authorized");
+
+    // Delete all messages in this session
+    const msgCol = getFirestoreAdmin().collection("ai_messages");
+    const msgSnap = await msgCol.where("sessionId", "==", sessionId).get();
+    const batch = getFirestoreAdmin().batch();
+    for (const doc of msgSnap.docs) {
+      batch.delete(doc.ref);
+    }
+    batch.delete(this.col.doc(sessionId));
+    await batch.commit();
   }
 
   async incrementMessageCount(sessionId: string): Promise<void> {

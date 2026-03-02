@@ -73,6 +73,12 @@ export async function removeFromAllowlist(email: string): Promise<FirestoreAllow
   return next;
 }
 
+export async function deleteFromAllowlist(email: string): Promise<void> {
+  const normalized = normalizeEmail(email);
+  const docRef = getDocRef(normalized);
+  await docRef.delete();
+}
+
 export async function isAllowed(email: string): Promise<boolean> {
   const normalized = normalizeEmail(email);
   const snapshot = await getDocRef(normalized).get();

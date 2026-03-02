@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { MessageSquare, Plus, Search } from "lucide-react";
+import { MessageSquare, Plus, Search, Trash2 } from "lucide-react";
 import type { AiSessionV1 } from "@/lib/data/types";
 import { useI18n } from "@/lib/i18n/i18n";
 
@@ -9,6 +9,7 @@ type SessionSidebarProps = {
   activeSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
+  onDeleteSession?: (sessionId: string) => void;
   refreshKey?: number;
 };
 
@@ -16,6 +17,7 @@ export function SessionSidebar({
   activeSessionId,
   onSelectSession,
   onNewSession,
+  onDeleteSession,
   refreshKey,
 }: SessionSidebarProps) {
   const { t } = useI18n();
@@ -79,22 +81,41 @@ export function SessionSidebar({
           </div>
         ) : (
           sessions.map((s) => (
-            <button
+            <div
               key={s.sessionId}
-              type="button"
-              onClick={() => onSelectSession(s.sessionId)}
-              className={`flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition-colors hover:bg-muted/50 ${
+              className={`group flex w-full items-start gap-2 border-b px-3 py-2.5 transition-colors hover:bg-muted/50 ${
                 activeSessionId === s.sessionId ? "bg-muted" : ""
               }`}
             >
-              <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-medium">{s.title}</div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground">
-                  {new Date(s.updatedAt).toLocaleDateString("zh-TW")} · {s.messageCount} 則
+              <button
+                type="button"
+                onClick={() => onSelectSession(s.sessionId)}
+                className="flex min-w-0 flex-1 items-start gap-2 text-left"
+              >
+                <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium">{s.title}</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    {new Date(s.updatedAt).toLocaleDateString("zh-TW")} · {s.messageCount} 則
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+              {onDeleteSession && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm("確定要刪除此對話？此操作無法復原。")) {
+                      onDeleteSession(s.sessionId);
+                    }
+                  }}
+                  className="mt-0.5 hidden h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:inline-flex"
+                  title="刪除對話"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           ))
         )}
       </div>

@@ -11,7 +11,8 @@ import { generateSql, executeBqQuery, recommendChartType } from "@/lib/ai/sql-ge
 import { searchKnowledge, formatKnowledgeContext } from "@/lib/ai/knowledge-rag";
 import { AiKnowledgeRepository } from "@/lib/firestore/ai-knowledge.repo";
 import { runDeepResearch } from "@/lib/ai/deep-research";
-import { generateSessionSummary, formatPastConclusions } from "@/lib/ai/session-summary";
+import { generateSessionSummary, formatPastConclusions, updateRollingSummary } from "@/lib/ai/session-summary";
+import { buildConversationContext } from "@/lib/ai/conversation-context";
 import { generateRagicQuery } from "@/lib/ai/ragic-query-gen";
 import { fetchRagicSheet } from "@/lib/ragic/client";
 import type { RagicQueryResult } from "@/lib/ragic/client";
@@ -92,7 +93,7 @@ SELECT
     ) * 100,
     2
   ) AS revenue_share_pct
-FROM \`b25h01-ragic.erp_backup.ls_v_orders_ext\`
+FROM \`b25h01-ragic.erp_backup.ls_v_order_lines_ext\`
 WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Taipei'), INTERVAL 30 DAY)
   AND brand_name IS NOT NULL
 GROUP BY brand_name
@@ -152,15 +153,16 @@ export async function POST(request: Request) {
     // Resolve or create session — with ownership verification
     let currentSessionId = sessionId;
     let isNewSession = false;
+    let existingSession: import("@/lib/data/types").AiSessionV1 | null = null;
     if (currentSessionId) {
-      const existing = await sessionRepo.get(currentSessionId);
-      if (!existing || existing.userId !== userId) {
+      existingSession = await sessionRepo.get(currentSessionId);
+      if (!existingSession || existingSession.userId !== userId) {
         return Response.json(
           { error: { code: "FORBIDDEN", message: "無權存取此對話" } },
           { status: 403 }
         );
       }
-      if (existing.messageCount >= MAX_MESSAGES_PER_SESSION) {
+      if (existingSession.messageCount >= MAX_MESSAGES_PER_SESSION) {
         return Response.json(
           { error: { code: "SESSION_LIMIT", message: "此對話已達訊息上限，請開啟新對話" } },
           { status: 400 }
@@ -191,7 +193,7 @@ export async function POST(request: Request) {
       module: "ai_expert",
       action: "chat",
       userId,
-      model: "gemini-3-pro",
+      model: "gemini-3.1-pro-preview",
       extra: { sessionId: currentSessionId, promptLength: prompt.length, mode: mode ?? "auto" },
     });
 
@@ -243,6 +245,11 @@ export async function POST(request: Request) {
       }
     })();
 
+    // 對話上下文（短期 + 長期記憶），只有非新 Session 才載入
+    const conversationContextPromise = !isNewSession && currentSessionId
+      ? buildConversationContext(currentSessionId, existingSession?.rollingSummary)
+      : Promise.resolve("");
+
     const intent = await intentPromise;
 
     const resolvedMode = intent.type === "generate_chart" || intent.type === "query_database"
@@ -288,13 +295,17 @@ export async function POST(request: Request) {
       }
     }
 
-    const pastConclusions = await withTimeoutOrFallback(pastConclusionsPromise, CONTEXT_FETCH_BUDGET_MS, "");
+    const [pastConclusions, conversationContext] = await Promise.all([
+      withTimeoutOrFallback(pastConclusionsPromise, CONTEXT_FETCH_BUDGET_MS, ""),
+      withTimeoutOrFallback(conversationContextPromise, CONTEXT_FETCH_BUDGET_MS, ""),
+    ]);
 
-    // Build system prompt with optional knowledge context + past conclusions
+    // Build system prompt with optional knowledge context + past conclusions + conversation context
     const knowledgeContext = formatKnowledgeContext(knowledgeSources);
     const systemPrompt = buildSystemPrompt({
       knowledgeContext: knowledgeContext || undefined,
       pastConclusions: pastConclusions || undefined,
+      conversationContext: conversationContext || undefined,
     });
 
     // Create SSE response
@@ -332,7 +343,7 @@ export async function POST(request: Request) {
             if (bqData.length === 0) {
               try {
             const sqlResult = await withTimeout(generateSql(queryText, correlationId), SQL_GEN_TIMEOUT_MS, "generateSql");
-            console.log(`[ROUTE] SQL safe=${sqlResult.safetyCheck.safe}, sql=${sqlResult.safetyCheck.safe ? sqlResult.safetyCheck.sql.slice(0, 500) : sqlResult.safetyCheck.reason}`);
+            console.log(`[ROUTE] SQL safe=${sqlResult.safetyCheck.safe}, sql=${sqlResult.safetyCheck.safe ? sqlResult.safetyCheck.sql.slice(0, 2000) : sqlResult.safetyCheck.reason}`);
             if (!sqlResult.safetyCheck.safe) {
               sqlFallbackReason = sqlResult.safetyCheck.reason;
             } else {
@@ -351,7 +362,7 @@ export async function POST(request: Request) {
 
               console.log(`[ROUTE] BQ result: ${bqResult.data.length} rows`);
               if (bqResult.data.length === 0) {
-                sqlFallbackReason = "查無符合條件的資料，請嘗試調整條件";
+                sqlFallbackReason = `查無符合條件的資料 (0 rows)。已執行的 SQL：\n${sqlResult.safetyCheck.sql.slice(0, 500)}`;
               } else {
                 bqData = bqResult.data;
                 cachedBqResults.set(cacheKey, {
@@ -443,10 +454,11 @@ export async function POST(request: Request) {
                     data: chartRows,
                     xKey: rec.xKey,
                     yKeys: rec.yKeys,
-                    seriesKey: rec.seriesKey,
+                    ...(rec.seriesKey ? { seriesKey: rec.seriesKey } : {}),
                   };
                   charts = [chartData];
-                  controller.enqueue(encoder.encode(sseEncode("chart", chartData)));
+                  // NOTE: chart SSE emission is DEFERRED until after AI streaming
+                  // so that AI's [CHART_TYPE:xxx] suggestion can be applied first
                 }
               }
             }
@@ -480,7 +492,7 @@ export async function POST(request: Request) {
                       yKeys: rec.yKeys.length > 0 ? rec.yKeys : ["revenue_share_pct"],
                     };
                     charts = [chartData];
-                    controller.enqueue(encoder.encode(sseEncode("chart", chartData)));
+                    // Deferred: chart will be emitted after AI streaming
                   }
                 } catch (fallbackErr) {
                   console.error(`[ROUTE] BQ fallback error:`, fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
@@ -633,6 +645,18 @@ export async function POST(request: Request) {
             // Fire-and-forget: auto-summarize session
             triggerAutoSummary(currentSessionId!, correlationId).catch((e: unknown) => { console.warn("[AI_ROUTE] auto-summary failed:", e instanceof Error ? e.message : e); });
 
+            // Fire-and-forget: 更新滾動摘要（不阻塞回覆）
+            updateRollingSummary(
+              existingSession?.rollingSummary,
+              prompt,
+              fullContent.slice(0, 2000),
+              correlationId,
+            ).then((newSummary) => {
+              sessionRepo.update(currentSessionId!, { rollingSummary: newSummary });
+            }).catch((e) => {
+              console.warn("[AI_ROUTE] rolling summary update failed (deep_research):", e instanceof Error ? e.message : e);
+            });
+
             controller.enqueue(encoder.encode(sseEncode("token", { text: fullContent })));
             controller.enqueue(encoder.encode(sseEncode("done", {
               sessionId: currentSessionId,
@@ -669,44 +693,49 @@ export async function POST(request: Request) {
             const dataSummary = `\n\n--- 資料摘要（供圖表類型判斷）---\n- 欄位：${columnNames.join(", ")}\n- 總筆數：${bqData.length}\n- 前 ${sampleRows.length} 筆樣本：\n${JSON.stringify(sampleRows)}\n---`;
             augmentedPrompt = `${prompt}\n\n以下是從 BigQuery 查詢到的真實數據：\n- **精確總筆數：${bqData.length} 筆**（這是完整查詢結果，非取樣）\n- 以下顯示前 ${previewRows.length} 筆供分析：\n\`\`\`json\n${dataPreview}\n\`\`\`\n\n重要規則：\n1. 總數請使用上方的「精確總筆數」，這是真實數據\n2. 分析內容只能基於提供的數據，嚴禁捏造\n3. 如果數據有排序，前幾筆就是最重要的${hasChart ? `\n4. 根據以下資料摘要，判斷最佳圖表類型，在回覆最後一行加上 [CHART_TYPE:類型代碼]（如 bar/line/pie/grouped_bar/area/stacked_bar/horizontal_bar/composed/scatter/radar/donut）${dataSummary}` : ""}`;
           } else if (sqlFallbackReason) {
-            augmentedPrompt = `${prompt}\n\n注意：系統在嘗試查詢資料時遇到錯誤。
-錯誤代碼：${sqlFallbackReason}
+            augmentedPrompt = `${prompt}\n\n注意：系統在提取資料時發生異常，錯誤訊息如下：
+\`${sqlFallbackReason}\`
 
 請在回覆中：
-1. 顯示上方的錯誤代碼（用 \`code\` 格式），讓使用者可以回報問題
-2. 主動提出 2-3 個相關的替代分析角度，讓使用者選擇
-3. 語氣要積極、有幫助，像一個專業分析師提出替代方案`;
+1. 用友善語氣說明「目前系統在○○時遇到語法錯誤，暫時無法顯示數據」（○○ = 使用者原始問題的摘要）
+2. 將上方錯誤訊息用 \`code\` 格式顯示，說明「請協助將以下錯誤代碼回報給技術團隊」
+3. 主動提出 2-3 個相關的替代分析角度，讓使用者選擇
+4. 語氣要積極、像一個專業分析師提出替代方案
+5. 嚴禁說「AI 服務暫時無法使用」或類似服務不可用的字眼——系統是正常的，只是這次查詢有語法問題`;
           }
 
-          // Stream with timeout + retry + model fallback chain
-          // Each model: try once (120s) → retry same model (120s) → next model
-          // Chain: Main (Gemini 3.1 Pro) → Gemini 3 Pro → Gemini 3 Flash
-          const STREAM_ATTEMPT_TIMEOUT_MS = 120_000;
+          // Stream with timeout + fast-fail + model fallback chain
+          // Each model: 1 attempt with first-token timeout (30s) + total timeout (300s)
+          // Chain: Main (Gemini 3.1 Pro) → Gemini 3.1 Pro → Gemini 3 Flash
+          const FIRST_TOKEN_TIMEOUT_MS = 30_000;  // Fail fast if no token within 30s
+          const TOTAL_STREAM_TIMEOUT_MS = 300_000; // Total streaming budget per model (Cloud Run allows 600s)
           const modelChain: ModelEntry[] = intent.type === "simple_answer"
             ? [{ model: getFastModel(), name: "Gemini 3 Flash" }]
             : getModelChain();
           let streamSuccess = false;
 
-          // Helper: attempt streaming with a single model, with countdown timer
+          // Helper: attempt streaming with a single model
           const attemptStream = async (
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             model: any,
             modelName: string,
-            attemptLabel: string,
           ): Promise<boolean> => {
             const streamAbort = new AbortController();
-            const streamTimer = setTimeout(() => streamAbort.abort(), STREAM_ATTEMPT_TIMEOUT_MS);
+            let gotFirstToken = false;
 
-            // Countdown timer: emit elapsed seconds every 10s
-            let elapsed = 0;
-            const countdownInterval = setInterval(() => {
-              elapsed += 10;
-              const remaining = Math.max(0, Math.round((STREAM_ATTEMPT_TIMEOUT_MS - elapsed * 1000) / 1000));
-              controller.enqueue(encoder.encode(sseEncode("progress", {
-                step: "model_waiting",
-                message: `${attemptLabel}（${modelName}）等待回應中... ${remaining}s`,
-              })));
-            }, 10_000);
+            // First-token timer: abort quickly if model is unresponsive
+            const firstTokenTimer = setTimeout(() => {
+              if (!gotFirstToken) {
+                console.log(`[ROUTE] ${modelName}: no token in ${FIRST_TOKEN_TIMEOUT_MS / 1000}s, aborting`);
+                streamAbort.abort();
+              }
+            }, FIRST_TOKEN_TIMEOUT_MS);
+
+            // Total stream timer: hard limit for the entire response
+            const totalTimer = setTimeout(() => {
+              console.log(`[ROUTE] ${modelName}: total timeout ${TOTAL_STREAM_TIMEOUT_MS / 1000}s, aborting`);
+              streamAbort.abort();
+            }, TOTAL_STREAM_TIMEOUT_MS);
 
             try {
               const result = streamText({
@@ -715,10 +744,15 @@ export async function POST(request: Request) {
                 prompt: augmentedPrompt,
                 abortSignal: streamAbort.signal,
                 temperature: 0.3,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 32768,
               });
 
               for await (const chunk of result.textStream) {
+                if (!gotFirstToken) {
+                  gotFirstToken = true;
+                  clearTimeout(firstTokenTimer);
+                  console.log(`[ROUTE] ${modelName}: first token received`);
+                }
                 fullContent += chunk;
                 controller.enqueue(encoder.encode(sseEncode("token", { text: chunk })));
               }
@@ -728,8 +762,8 @@ export async function POST(request: Request) {
               }
               return true;
             } finally {
-              clearTimeout(streamTimer);
-              clearInterval(countdownInterval);
+              clearTimeout(firstTokenTimer);
+              clearTimeout(totalTimer);
             }
           };
 
@@ -737,70 +771,56 @@ export async function POST(request: Request) {
             if (streamSuccess) break;
             const { model: currentModel, name: modelName } = modelChain[i];
 
-            // First attempt
-            console.log(`[ROUTE] Trying model #${i}: ${modelName} (attempt 1)`);
+            console.log(`[ROUTE] Trying model #${i}: ${modelName}`);
             controller.enqueue(encoder.encode(sseEncode("progress", {
               step: "model_waiting",
               message: `正在使用 ${modelName} 生成回覆...`,
             })));
 
             try {
-              streamSuccess = await attemptStream(currentModel, modelName, "首次嘗試");
+              streamSuccess = await attemptStream(currentModel, modelName);
               if (streamSuccess) {
                 console.log(`[ROUTE] Model ${modelName} succeeded, content length: ${fullContent.length}`);
                 break;
               }
-            } catch (firstErr) {
-              const errMsg = firstErr instanceof Error ? firstErr.message : "unknown";
-              const reason = errMsg.includes("abort") || errMsg.includes("no content")
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : "unknown";
+              const reason = errMsg.includes("abort")
                 ? "回應超時" : errMsg.includes("high demand") ? "模型高流量" : errMsg.slice(0, 60);
-              console.error(`[ROUTE] Model ${modelName} attempt 1 failed: ${errMsg}`);
+              console.error(`[ROUTE] Model ${modelName} failed: ${errMsg}`);
 
-              // Retry same model once
-              console.log(`[ROUTE] Retrying model #${i}: ${modelName} (attempt 2)`);
+              // If we already got substantial content, treat as partial success
+              // instead of discarding and switching models
+              if (fullContent.trim().length > 100) {
+                console.log(`[ROUTE] ${modelName} errored but has ${fullContent.length} chars of content, treating as partial success`);
+                streamSuccess = true;
+                break;
+              }
+
               fullContent = "";
-              controller.enqueue(encoder.encode(sseEncode("progress", {
-                step: "model_fallback",
-                message: `${modelName} ${reason}，重試中...`,
-              })));
 
-              try {
-                streamSuccess = await attemptStream(currentModel, modelName, "重試");
-                if (streamSuccess) {
-                  console.log(`[ROUTE] Model ${modelName} succeeded on retry, content length: ${fullContent.length}`);
-                  break;
-                }
-              } catch (retryErr) {
-                const retryMsg = retryErr instanceof Error ? retryErr.message : "unknown";
-                const retryReason = retryMsg.includes("abort") || retryMsg.includes("no content")
-                  ? "回應超時" : retryMsg.includes("high demand") ? "模型高流量" : retryMsg.slice(0, 60);
-                console.error(`[ROUTE] Model ${modelName} attempt 2 failed: ${retryMsg}`);
-                fullContent = "";
+              aiLog({
+                level: "warn",
+                correlationId,
+                module: "ai_expert",
+                action: "chat",
+                userId,
+                error: `Model ${modelName} failed (${errMsg})`,
+              });
 
-                aiLog({
-                  level: "warn",
-                  correlationId,
-                  module: "ai_expert",
-                  action: "chat",
-                  userId,
-                  error: `Model ${modelName} failed after 2 attempts (${retryMsg})`,
-                });
-
-                // Notify about switching to next model
-                if (i < modelChain.length - 1) {
-                  const nextName = modelChain[i + 1].name;
-                  controller.enqueue(encoder.encode(sseEncode("progress", {
-                    step: "model_fallback",
-                    message: `${modelName} ${retryReason}（兩次嘗試均失敗），切換至 ${nextName}...`,
-                  })));
-                } else {
-                  throw retryErr; // Last model, no more fallbacks
-                }
+              if (i < modelChain.length - 1) {
+                const nextName = modelChain[i + 1].name;
+                controller.enqueue(encoder.encode(sseEncode("progress", {
+                  step: "model_fallback",
+                  message: `${modelName} ${reason}，切換至 ${nextName}...`,
+                })));
+              } else {
+                throw err; // Last model, no more fallbacks
               }
             }
           }
 
-          // Parse AI's chart type suggestion and update chart if different
+          // Apply AI's chart type suggestion BEFORE emitting chart
           if (charts.length > 0) {
             const typeMap: Record<string, string> = {
               bar: "bar", grouped_bar: "grouped_bar", line: "line", pie: "pie", area: "area",
@@ -821,23 +841,21 @@ export async function POST(request: Request) {
             const suggestMatch = structuredMatch || legacyMatch;
             if (suggestMatch) {
               const suggestedType = typeMap[suggestMatch[1].toLowerCase()] ?? suggestMatch[1].toLowerCase();
-              // AI's chart type suggestion always takes priority over programmatic default
-              const shouldApply = suggestedType
-                && suggestedType !== charts[0].chartType;
-
-              if (shouldApply) {
-                console.log(`[ROUTE] AI chart suggestion: ${charts[0].chartType} → ${suggestedType} (source: ${structuredMatch ? "structured" : "legacy"})`);
+              if (suggestedType && suggestedType !== charts[0].chartType) {
+                console.log(`[ROUTE] AI chart type applied: ${charts[0].chartType} → ${suggestedType}`);
                 charts[0] = { ...charts[0], chartType: suggestedType as AiChartDataV1["chartType"] };
-                // Re-emit updated chart (same chartId → frontend replaces instead of appending)
-                controller.enqueue(encoder.encode(sseEncode("chart", charts[0])));
               }
             }
-            // Remove chart type tags from displayed content
-            fullContent = fullContent
-              .replace(/\n?\[CHART_TYPE[：:]?\s*[a-z_]+\s*\]/gi, "")
-              .replace(/\n?建議圖表[：:].*/g, "")
-              .trim();
+
+            // Emit chart AFTER AI's type suggestion has been applied
+            controller.enqueue(encoder.encode(sseEncode("chart", charts[0])));
           }
+
+          // Always remove chart type tags from displayed content (even when no chart)
+          fullContent = fullContent
+            .replace(/\n?\[CHART_TYPE[：:]?\s*[a-z_]+\s*\]/gi, "")
+            .replace(/\n?建議圖表[：:].*/g, "")
+            .trim();
 
           // Save assistant message
           const assistantMsg = await messageRepo.create({
@@ -875,6 +893,18 @@ export async function POST(request: Request) {
           // Fire-and-forget: auto-summarize session when it has 4+ messages and no summary
           triggerAutoSummary(currentSessionId!, correlationId).catch((e: unknown) => { console.warn("[AI_ROUTE] auto-summary failed:", e instanceof Error ? e.message : e); });
 
+          // Fire-and-forget: 更新滾動摘要（不阻塞回覆）
+          updateRollingSummary(
+            existingSession?.rollingSummary,
+            prompt,
+            fullContent.slice(0, 2000),
+            correlationId,
+          ).then((newSummary) => {
+            sessionRepo.update(currentSessionId!, { rollingSummary: newSummary });
+          }).catch((e) => {
+            console.warn("[AI_ROUTE] rolling summary update failed:", e instanceof Error ? e.message : e);
+          });
+
           controller.enqueue(
             encoder.encode(
               sseEncode("done", {
@@ -898,12 +928,20 @@ export async function POST(request: Request) {
             durationMs: Date.now() - startTime,
           });
           const errDetail = err instanceof Error ? err.message : "Unknown error";
+          // Classify error and ALWAYS show error detail for debugging
+          const isSqlError = /Unrecognized name|Syntax error|BigQuery/i.test(errDetail);
+          const isTimeout = /timeout|DEADLINE_EXCEEDED/i.test(errDetail);
+          const code = isSqlError ? "SQL_ERROR" : isTimeout ? "TIMEOUT" : "MODEL_ERROR";
+          const shortErr = errDetail.slice(0, 300);
+          const userMsg = isSqlError
+            ? `資料庫查詢失敗: ${shortErr}`
+            : isTimeout
+              ? `AI 回應逾時，請縮小查詢範圍後重試 [${shortErr}]`
+              : `AI 服務異常 [${code}]: ${shortErr}`;
           controller.enqueue(
             encoder.encode(sseEncode("error", {
-              code: "MODEL_UNAVAILABLE",
-              message: process.env.NODE_ENV === "development"
-                ? `AI 服務錯誤: ${errDetail}`
-                : "AI 服務暫時無法使用，請稍後再試",
+              code,
+              message: userMsg,
             }))
           );
           controller.close();

@@ -51,13 +51,54 @@ export function getChatModel(): any {
   return getVertex()(process.env.VERTEX_MODEL_ID || "gemini-2.5-pro");
 }
 
-/** Fast model — now also uses Gemini 3 Pro for better accuracy */
+/** Model entry with display name for fallback chain */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ModelEntry = { model: any; name: string };
+
+/** Fallback model chain: Gemini 3.1 Pro → Gemini 3 Flash */
+const FALLBACK_MODEL_IDS: Array<{ id: string; name: string }> = [
+  { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
+  { id: FAST_MODEL_ID, name: "Gemini 3 Flash" },
+];
+
+export function getModelChain(): ModelEntry[] {
+  if (process.env.GEMINI_API_KEY) {
+    const ai = getGoogleAi();
+    return [
+      { model: ai(MAIN_MODEL_ID), name: getMainModelDisplayName() },
+      ...FALLBACK_MODEL_IDS.map((m) => ({ model: ai(m.id), name: m.name })),
+    ];
+  }
+  const vtx = getVertex();
+  return [
+    { model: vtx(process.env.VERTEX_MODEL_ID || "gemini-2.5-pro"), name: "Gemini 2.5 Pro" },
+    { model: vtx(VERTEX_FAST_MODEL_ID), name: "Gemini 2.5 Flash" },
+  ];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getFallbackModels(): any[] {
+  if (process.env.GEMINI_API_KEY) {
+    const ai = getGoogleAi();
+    return FALLBACK_MODEL_IDS.map((m) => ai(m.id));
+  }
+  return [getVertex()(VERTEX_FAST_MODEL_ID)];
+}
+
+export function getMainModelDisplayName(): string {
+  const id = MAIN_MODEL_ID;
+  if (id.includes("3.1")) return "Gemini 3.1 Pro";
+  if (id.includes("3-pro") || id.includes("3.0")) return "Gemini 3.1 Pro";
+  return id;
+}
+
+/** Fast model — Flash for routing, SQL gen, titles (lower latency) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getFastModel(): any {
   if (process.env.GEMINI_API_KEY) {
-    return getGoogleAi()(MAIN_MODEL_ID);
+    return getGoogleAi()(FAST_MODEL_ID);
   }
-  return getVertex()(process.env.VERTEX_MODEL_ID || "gemini-2.5-pro");
+  return getVertex()(VERTEX_FAST_MODEL_ID);
 }
 
 export function getEmbeddingModel() {

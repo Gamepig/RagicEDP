@@ -2,6 +2,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--build-arg=SHORT_SHA=$SHORT_SHA'
       - '-t'
       - 'asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal:$SHORT_SHA'
       - '-t'
@@ -25,7 +26,7 @@ steps:
       - '--max-instances=3'
       - '--concurrency=80'
       - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,BIGQUERY_DATASET=erp_backup,BIGQUERY_LOCATION=asia-east1,GOOGLE_VERTEX_PROJECT=$PROJECT_ID,GOOGLE_VERTEX_LOCATION=us-central1,PORTAL_DATA_PROVIDER_MODE=real,PORTAL_DEV_BYPASS_AUTH=false,NEXTAUTH_URL=https://ragic-edp-portal-571015722523.asia-east1.run.app,PORTAL_ADMIN_EMAILS=gamepig1976@gmail.com,AUTH_TRUST_HOST=true,MAIN_MODEL_ID=gemini-3.1-pro-preview'
-      - '--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,NEXTAUTH_SECRET=nextauth-secret:latest,AUTH_SECRET=nextauth-secret:latest'
+      - '--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,NEXTAUTH_SECRET=nextauth-secret:latest,AUTH_SECRET=nextauth-secret:latest,RAGIC_API_KEY=ragic-api-key:latest'
 
 images:
   - 'asia-east1-docker.pkg.dev/$PROJECT_ID/ragic-edp/portal'

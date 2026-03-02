@@ -1,0 +1,26 @@
+node_modules
+.next
+.env*
+tsconfig.tsbuildinfo
+.DS_Store
+
+# Secrets
+client_secret_*.json
+
+# Dev tools
+.claude/
+.codex/
+.specify/
+opencode.json
+
+# Documentation (dev-only, not needed for deployment)
+docs/
+specs/
+HANDOVER_*.md
+
+# Scripts (dev/migration only)
+scripts/
+
+# Dev artifacts
+tests/
+portal_master_plan*.md
