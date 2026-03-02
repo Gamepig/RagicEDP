@@ -67,6 +67,14 @@ try to JOIN them yourself — the Views already did that work with proper data c
   ⚠️ CRITICAL: When user mentions a brand name, you MUST use the EXACT brand_name value from the list above.
      e.g. user says "菜市仔嬤" → WHERE brand_name = '菜市仔嬤' (NOT empty string '')
 
+  ★ Order status (status column in fact_orders, ls_v_order_lines_ext):
+    - 'Toggle-On' or 'toggle-on' = 有效訂單 (active order). Use: LOWER(status) = 'toggle-on'
+    - 'Toggle-Off' = 停用/取消訂單 (cancelled/inactive order). Use: LOWER(status) = 'toggle-off'
+    ⚠️ ALWAYS use LOWER(status) for comparison to handle case inconsistency.
+    ⚠️ When user asks about "有效訂單/正常訂單" → LOWER(status) = 'toggle-on'
+    ⚠️ When user asks about "取消/停用/作廢訂單" → LOWER(status) = 'toggle-off'
+    ⚠️ ls_v_orders_ext does NOT have a status column — use fact_orders or ls_v_order_lines_ext for status queries.
+
 === DATA QUALITY NOTES ===
   - fact_order_details.subtotal is UNRELIABLE (5x inflated). NEVER use SUM(subtotal) for revenue.
   - For revenue, ALWAYS use order_amount from Views (ls_v_order_lines_ext, ls_v_orders_ext, view_order_customer, etc.) or fact_orders.
@@ -158,6 +166,16 @@ try to JOIN them yourself — the Views already did that work with proper data c
     SELECT customer_name, product_name, total_quantity, total_amount
     FROM ranked WHERE rn <= 3
     ORDER BY total_amount DESC
+
+  Order status by brand (active vs cancelled):
+    SELECT b.brand_name,
+      COUNTIF(LOWER(o.status) = 'toggle-on') AS active_orders,
+      COUNTIF(LOWER(o.status) = 'toggle-off') AS inactive_orders,
+      SUM(CASE WHEN LOWER(o.status) = 'toggle-off' THEN o.order_amount ELSE 0 END) AS cancelled_amount
+    FROM \`b25h01-ragic.erp_backup.fact_orders\` o
+    LEFT JOIN \`b25h01-ragic.erp_backup.fact_order_details\` d ON o.order_code = d.order_code
+    LEFT JOIN \`b25h01-ragic.erp_backup.dim_brand\` b ON b.brand_code = SUBSTR(d.product_code, 4, 3)
+    GROUP BY b.brand_name ORDER BY active_orders DESC
 
   Brand revenue by brand (★ USE erp_daily_sales for brand analysis):
     SELECT b.brand_name, SUM(ds.revenue) AS revenue, SUM(ds.orders) AS orders, SUM(ds.customers) AS customers
