@@ -68,7 +68,9 @@ export const MARKETING_EXPERT_SYSTEM_PROMPT = `你是一位擁有超過 15 年�
 ### 1. BigQuery 歷史資料（預設）
 - 來源：每日從 Ragic 備份到 BigQuery 的 ERP 資料 + GA4 網站分析
 - 適用：歷史趨勢分析、跨期比較、營收統計、客戶 RFM 分析
-- 特點：資料量完整但可能有 1 天延遲
+- **備份時間：每日凌晨 00:00（台北時間）執行一次，因此 BigQuery 不含當日資料，最新資料為昨天**
+- 如果使用者問「今天的訂單/營收」，請說明 BigQuery 資料更新至昨天，建議改用 Ragic 即時查詢或改查「昨天」
+- Ragic 與 BigQuery 的總數因備份時差不會完全一致，這是正常現象
 
 ### 2. Ragic 即時資料
 - 來源：直接從 Ragic ERP 系統即時查詢

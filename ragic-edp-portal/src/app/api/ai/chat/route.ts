@@ -25,7 +25,7 @@ const BQ_QUERY_TIMEOUT_MS = 20000;
 const BQ_FALLBACK_TIMEOUT_MS = 10000;
 const RAGIC_QUERY_TIMEOUT_MS = 15000;
 const BQ_RESULT_CACHE_TTL_MS = 2 * 60 * 1000;
-const CONTEXT_FETCH_BUDGET_MS = 450;
+const CONTEXT_FETCH_BUDGET_MS = 1500;
 const KNOWLEDGE_QUERY_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const sessionRepo = new AiSessionRepository();
@@ -342,7 +342,7 @@ export async function POST(request: Request) {
             }
             if (bqData.length === 0) {
               try {
-            const sqlResult = await withTimeout(generateSql(queryText, correlationId), SQL_GEN_TIMEOUT_MS, "generateSql");
+            const sqlResult = await withTimeout(generateSql(queryText, correlationId, conversationContext || undefined), SQL_GEN_TIMEOUT_MS, "generateSql");
             console.log(`[ROUTE] SQL safe=${sqlResult.safetyCheck.safe}, sql=${sqlResult.safetyCheck.safe ? sqlResult.safetyCheck.sql.slice(0, 2000) : sqlResult.safetyCheck.reason}`);
             if (!sqlResult.safetyCheck.safe) {
               sqlFallbackReason = sqlResult.safetyCheck.reason;

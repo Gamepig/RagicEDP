@@ -47,6 +47,15 @@ try to JOIN them yourself — the Views already did that work with proper data c
   - When user says "過去一週" or "最近一週", use INTERVAL 7 DAY. If no daily data exists for recent dates, fall back to the most recent available dates.
   - When user says "上個月", calculate the previous calendar month: DATE_TRUNC(DATE_SUB(CURRENT_DATE('Asia/Taipei'), INTERVAL 1 MONTH), MONTH) to LAST_DAY(DATE_SUB(CURRENT_DATE('Asia/Taipei'), INTERVAL 1 MONTH)).
 
+  ★★ BACKUP TIMING (CRITICAL — affects all ERP queries):
+    BigQuery ERP data is backed up from Ragic ONCE DAILY at 00:00 (midnight, Asia/Taipei).
+    This means: BigQuery NEVER contains today's data. The latest available data is YESTERDAY.
+    - When user asks about "今天/今日/today" orders or revenue → the data does NOT exist in BQ.
+      You should use DATE_SUB(CURRENT_DATE('Asia/Taipei'), INTERVAL 1 DAY) as the latest date.
+    - When user asks about "最新訂單/最近的訂單" without specifying Ragic → query BQ but note
+      that results are up to yesterday. The AI response layer will inform the user about the delay.
+    - Ragic vs BQ totals will NEVER match exactly due to this daily backup timing.
+
   ★ DATA FRESHNESS FALLBACK (CRITICAL):
     ERP data may lag behind by days or weeks. If a query for "本月" or "最近" returns 0 rows,
     the data likely hasn't been synced yet. In that case, AUTOMATICALLY fall back:
@@ -467,14 +476,22 @@ function fixEmptyStringConditions(sql: string, query: string): string {
 
 export async function generateSql(
   naturalLanguage: string,
-  correlationId: string
+  correlationId: string,
+  conversationContext?: string,
 ): Promise<SqlGenerationResult> {
   // Only load GA4 schema when the query is GA4-related (saves ~2-5s)
   const includeGa4 = needsGa4Schema(naturalLanguage);
   const schemas = await getAiDatasetSchema(includeGa4);
   const schemaText = formatAiSchemaForPrompt(schemas);
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }); // YYYY-MM-DD
-  const systemPrompt = `Today's date (Taipei timezone): ${today}\n\n${SQL_RULES}\n\n=== AVAILABLE SCHEMA (auto-discovered from BigQuery) ===\n${schemaText}\n\nCRITICAL REMINDER: Output ONLY the SQL SELECT/WITH statement. ABSOLUTELY NO text before or after the SQL. No explanations, no descriptions, no markdown fences, no "Based on your request" preamble. The FIRST character of your response must be SELECT or WITH. VIOLATION = SYSTEM FAILURE.`;
+  let systemPrompt = `Today's date (Taipei timezone): ${today}\n\n${SQL_RULES}\n\n=== AVAILABLE SCHEMA (auto-discovered from BigQuery) ===\n${schemaText}`;
+
+  // Inject conversation context so SQL generator knows prior analysis results
+  if (conversationContext) {
+    systemPrompt += `\n\n=== CONVERSATION CONTEXT (use to resolve pronouns like "它/這個/該品牌/上述") ===\n${conversationContext.slice(0, 1500)}\n\nIMPORTANT: When the user refers to entities from prior turns (e.g. "它的通路", "排名第一的", "剛才的品牌"), resolve the reference using the conversation context above and include the explicit entity name in your SQL WHERE clause.`;
+  }
+
+  systemPrompt += `\n\nCRITICAL REMINDER: Output ONLY the SQL SELECT/WITH statement. ABSOLUTELY NO text before or after the SQL. No explanations, no descriptions, no markdown fences, no "Based on your request" preamble. The FIRST character of your response must be SELECT or WITH. VIOLATION = SYSTEM FAILURE.`;
 
   // Enrich query with explicit entity hints for the AI model
   const enrichedQuery = enrichQueryWithEntities(naturalLanguage);

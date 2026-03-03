@@ -4,9 +4,9 @@ import { AiMessageRepository } from "../firestore/ai-message.repo";
 
 const messageRepo = new AiMessageRepository();
 
-const MAX_RECENT_MESSAGES = 6; // 3 輪（user + assistant）
-const MAX_MESSAGE_LENGTH = 500; // 每條訊息截斷長度
-const MAX_TOTAL_LENGTH = 2000; // 整體上下文字數限制
+const MAX_RECENT_MESSAGES = 10; // 5 輪（user + assistant）
+const MAX_MESSAGE_LENGTH = 800; // 每條訊息截斷長度
+const MAX_TOTAL_LENGTH = 4000; // 整體上下文字數限制
 
 /**
  * 從 Session 載入對話上下文，組合短期 + 長期記憶。

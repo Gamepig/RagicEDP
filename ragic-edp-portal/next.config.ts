@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   // See error: Cannot find module './vendor-chunks/next-themes@...js'
   transpilePackages: ["next-themes"],
   env: {
-    NEXT_PUBLIC_APP_VERSION: `v0.2.0-${(process.env.SHORT_SHA ?? process.env.COMMIT_SHA?.slice(0, 7) ?? "dev")}`,
+    NEXT_PUBLIC_APP_VERSION: `v0.2.1-${(process.env.SHORT_SHA ?? process.env.COMMIT_SHA?.slice(0, 7) ?? "dev")}`,
   },
 };
 
