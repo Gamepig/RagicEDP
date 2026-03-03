@@ -47,6 +47,20 @@ try to JOIN them yourself — the Views already did that work with proper data c
   - When user says "過去一週" or "最近一週", use INTERVAL 7 DAY. If no daily data exists for recent dates, fall back to the most recent available dates.
   - When user says "上個月", calculate the previous calendar month: DATE_TRUNC(DATE_SUB(CURRENT_DATE('Asia/Taipei'), INTERVAL 1 MONTH), MONTH) to LAST_DAY(DATE_SUB(CURRENT_DATE('Asia/Taipei'), INTERVAL 1 MONTH)).
 
+  ★ DATA FRESHNESS FALLBACK (CRITICAL):
+    ERP data may lag behind by days or weeks. If a query for "本月" or "最近" returns 0 rows,
+    the data likely hasn't been synced yet. In that case, AUTOMATICALLY fall back:
+    - Instead of DATE_TRUNC(CURRENT_DATE, MONTH), use a subquery to find the latest available date:
+      (SELECT MAX(date) FROM \`b25h01-ragic.erp_backup.erp_daily_sales\`) for erp_daily_sales
+      (SELECT MAX(order_date) FROM \`b25h01-ragic.erp_backup.fact_orders\`) for fact_orders
+    - Then use that month: DATE_TRUNC(latest_date, MONTH) to latest_date
+    - ALWAYS mention in your response: "資料更新至 YYYY-MM-DD，顯示該月份的數據" so users know the data period.
+    - For time-range queries, prefer using DATE_SUB from the latest available date rather than CURRENT_DATE.
+    Example pattern:
+      WITH data_range AS (SELECT MAX(order_date) AS latest FROM \`b25h01-ragic.erp_backup.fact_orders\`)
+      SELECT ... FROM fact_orders, data_range
+      WHERE order_date >= DATE_TRUNC(data_range.latest, MONTH)
+
 === TABLE SELECTION GUIDE (CRITICAL — read before writing any query) ===
   ★ ls_v_order_lines_ext — MOST COMPLETE view. Use for: brand, channel, product, payment, logistics analysis.
     Columns: order_code, order_date, customer_code, customer_name, product_code, product_name,
