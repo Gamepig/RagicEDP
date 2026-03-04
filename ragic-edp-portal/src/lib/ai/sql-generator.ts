@@ -4,6 +4,8 @@ import { validateSql, type SqlSafetyResult } from "./sql-safety";
 import { getAiDatasetSchema, formatAiSchemaForPrompt, needsGa4Schema } from "./schema-cache";
 import { aiLog, type AiLogEntry } from "./logger";
 import type { AiChartDataV1, QueryTraceV0 } from "../data/types";
+import type { ResolvedQueryContext } from "./query-context-resolver";
+import { buildQueryEnrichment } from "./query-context-resolver";
 
 const SQL_RULES = `You are a BigQuery SQL generator for a food e-commerce company.
 
@@ -478,6 +480,7 @@ export async function generateSql(
   naturalLanguage: string,
   correlationId: string,
   conversationContext?: string,
+  resolvedContext?: ResolvedQueryContext,
 ): Promise<SqlGenerationResult> {
   // Only load GA4 schema when the query is GA4-related (saves ~2-5s)
   const includeGa4 = needsGa4Schema(naturalLanguage);
@@ -488,23 +491,63 @@ export async function generateSql(
 
   // Inject conversation context so SQL generator knows prior analysis results
   if (conversationContext) {
-    systemPrompt += `\n\n=== CONVERSATION CONTEXT (use to resolve pronouns like "它/這個/該品牌/上述") ===\n${conversationContext.slice(0, 1500)}\n\nIMPORTANT: When the user refers to entities from prior turns (e.g. "它的通路", "排名第一的", "剛才的品牌"), resolve the reference using the conversation context above and include the explicit entity name in your SQL WHERE clause.`;
+    systemPrompt += `\n\n=== CONVERSATION CONTEXT (use to resolve references from prior turns) ===\n${conversationContext.slice(0, 2500)}`;
+    systemPrompt += `\n\nIMPORTANT — CONVERSATION CONTINUITY RULES:
+1. When the user refers to entities with pronouns ("它/這個/該品牌/上述"), resolve from context above.
+2. When the user asks a follow-up question WITHOUT mentioning a brand/channel/time range that was active in prior turns, CARRY FORWARD the most recent entity. Example: if prior turns discussed HOYA, and user now asks "上月各通路營收比較", add WHERE brand_name = 'HOYA'.
+3. When the user explicitly names a NEW entity (e.g., switches from HOYA to 菜市仔嬤), use the new entity and do NOT carry forward the old one.
+4. Time ranges from prior turns should be inherited unless the user specifies a new one.
+5. Order status filters (toggle-on/toggle-off) should be inherited if user continues asking about orders.`;
+  }
+
+  // Inject resolved context entities as explicit SQL hints (highest priority)
+  if (resolvedContext?.isFollowUp) {
+    const enrichment = buildQueryEnrichment(resolvedContext);
+    if (enrichment) {
+      systemPrompt += `\n\n=== RESOLVED CONTEXT FROM CONVERSATION (MANDATORY — apply these filters) ===\n${enrichment}\n\n★★ These filters were auto-resolved from conversation history. You MUST include them in your SQL WHERE clause unless the user's current query explicitly overrides them with different values.`;
+    }
   }
 
   systemPrompt += `\n\nCRITICAL REMINDER: Output ONLY the SQL SELECT/WITH statement. ABSOLUTELY NO text before or after the SQL. No explanations, no descriptions, no markdown fences, no "Based on your request" preamble. The FIRST character of your response must be SELECT or WITH. VIOLATION = SYSTEM FAILURE.`;
 
   // Enrich query with explicit entity hints for the AI model
-  const enrichedQuery = enrichQueryWithEntities(naturalLanguage);
+  let enrichedQuery = enrichQueryWithEntities(naturalLanguage);
+
+  // If resolved context has a brand but enrichQueryWithEntities didn't detect one, append hint
+  if (resolvedContext?.brand && !enrichedQuery.includes("SYSTEM ENTITY HINT")) {
+    enrichedQuery += `\n\n[SYSTEM ENTITY HINT: 延續上文，Use WHERE brand_name = '${resolvedContext.brand}' in the SQL. This brand was discussed in prior conversation turns.]`;
+  }
 
   // Debug: log schema structure to verify Views-first ordering
   const viewCount = schemas.filter(s => s.tableType === "VIEW").length;
   const tableCount = schemas.filter(s => s.tableType === "BASE TABLE").length;
-  console.log(`[SQL-GEN] Schema: ${viewCount} views, ${tableCount} tables (ga4=${includeGa4}). Prompt length: ${systemPrompt.length} chars. Query: ${enrichedQuery.slice(0, 200)}`);
+  const ctxInfo = resolvedContext?.isFollowUp ? ` | ctx: ${resolvedContext.summary}` : "";
+  console.log(`[SQL-GEN] Schema: ${viewCount} views, ${tableCount} tables (ga4=${includeGa4}). Prompt length: ${systemPrompt.length} chars${ctxInfo}. Query: ${enrichedQuery.slice(0, 200)}`);
 
   let rawSql = await generateSqlWithRetry(systemPrompt, enrichedQuery, correlationId);
 
   // Post-process: fix known model issues (empty brand_name conditions)
   rawSql = fixEmptyStringConditions(rawSql, naturalLanguage);
+
+  // Post-process: if resolved context has brand but SQL didn't include it, inject WHERE
+  if (resolvedContext?.brand && !rawSql.toLowerCase().includes("brand_name")) {
+    // Only inject for queries that use brand-aware tables
+    const brandTables = ["ls_v_order_lines_ext", "erp_daily_sales", "dim_brand"];
+    const usesBrandTable = brandTables.some((t) => rawSql.toLowerCase().includes(t));
+    if (usesBrandTable) {
+      console.log(`[SQL-GEN] Injecting brand filter: brand_name = '${resolvedContext.brand}'`);
+      // Find WHERE clause and append, or add WHERE before GROUP BY/ORDER BY/LIMIT
+      if (/\bWHERE\b/i.test(rawSql)) {
+        rawSql = rawSql.replace(/\bWHERE\b/i, `WHERE brand_name = '${resolvedContext.brand}' AND`);
+      } else {
+        // Insert WHERE before GROUP BY, ORDER BY, or LIMIT
+        const insertPoint = rawSql.search(/\b(GROUP\s+BY|ORDER\s+BY|LIMIT)\b/i);
+        if (insertPoint > 0) {
+          rawSql = rawSql.slice(0, insertPoint) + `WHERE brand_name = '${resolvedContext.brand}'\n` + rawSql.slice(insertPoint);
+        }
+      }
+    }
+  }
 
   const safetyCheck = validateSql(rawSql);
   console.log(`[SQL-GEN] Final SQL: ${rawSql.slice(0, 300)}`);

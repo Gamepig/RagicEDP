@@ -13,6 +13,7 @@ import { AiKnowledgeRepository } from "@/lib/firestore/ai-knowledge.repo";
 import { runDeepResearch } from "@/lib/ai/deep-research";
 import { generateSessionSummary, formatPastConclusions, updateRollingSummary } from "@/lib/ai/session-summary";
 import { buildConversationContext } from "@/lib/ai/conversation-context";
+import { resolveQueryContext, type ResolvedQueryContext } from "@/lib/ai/query-context-resolver";
 import { generateRagicQuery } from "@/lib/ai/ragic-query-gen";
 import { fetchRagicSheet } from "@/lib/ragic/client";
 import type { RagicQueryResult } from "@/lib/ragic/client";
@@ -300,12 +301,25 @@ export async function POST(request: Request) {
       withTimeoutOrFallback(conversationContextPromise, CONTEXT_FETCH_BUDGET_MS, ""),
     ]);
 
+    // Resolve query context — extract active entities from conversation history
+    const resolvedCtx: ResolvedQueryContext = conversationContext
+      ? resolveQueryContext(prompt, conversationContext)
+      : { isFollowUp: false, summary: "" };
+    if (resolvedCtx.isFollowUp) {
+      console.log(`[ROUTE] Context resolved: ${resolvedCtx.summary}`);
+    }
+
     // Build system prompt with optional knowledge context + past conclusions + conversation context
     const knowledgeContext = formatKnowledgeContext(knowledgeSources);
+    // Enrich conversation context with resolved entity summary for the marketing expert
+    let enrichedConversationCtx = conversationContext || undefined;
+    if (resolvedCtx.isFollowUp && enrichedConversationCtx) {
+      enrichedConversationCtx += `\n\n★ 上下文延續：${resolvedCtx.summary}（已自動將此篩選條件注入資料查詢）`;
+    }
     const systemPrompt = buildSystemPrompt({
       knowledgeContext: knowledgeContext || undefined,
       pastConclusions: pastConclusions || undefined,
-      conversationContext: conversationContext || undefined,
+      conversationContext: enrichedConversationCtx,
     });
 
     // Create SSE response
@@ -320,6 +334,8 @@ export async function POST(request: Request) {
           // Only skip for deep_research (has its own BQ flow) and pure knowledge_lookup
           let bqData: Record<string, unknown>[] = [];
           let sqlFallbackReason: string | null = null;
+          let bqNoData = false;  // 0 rows is NOT an error — it's a valid empty result
+          let bqNoDataSql: string | null = null;
           const shouldQueryBq = intent.type !== "deep_research" && intent.type !== "knowledge_lookup" && intent.type !== "simple_answer" && intent.type !== "query_ragic";
           if (shouldQueryBq) {
             const totalSteps = 4;
@@ -328,7 +344,9 @@ export async function POST(request: Request) {
             const queryText = intent.type === "generate_chart" || intent.type === "query_database"
               ? (intent as { query: string }).query
               : prompt;
-            const cacheKey = getBqCacheKey(queryText);
+            // Include resolved context in cache key so brand/time switches don't hit stale cache
+            const ctxSuffix = resolvedCtx.isFollowUp ? `|ctx:${resolvedCtx.brand ?? ""}:${resolvedCtx.timeRange ?? ""}:${resolvedCtx.status ?? ""}` : "";
+            const cacheKey = getBqCacheKey(queryText + ctxSuffix);
             const cached = cachedBqResults.get(cacheKey);
             if (cached && Date.now() < cached.expiresAt) {
               bqData = cached.data;
@@ -342,7 +360,7 @@ export async function POST(request: Request) {
             }
             if (bqData.length === 0) {
               try {
-            const sqlResult = await withTimeout(generateSql(queryText, correlationId, conversationContext || undefined), SQL_GEN_TIMEOUT_MS, "generateSql");
+            const sqlResult = await withTimeout(generateSql(queryText, correlationId, conversationContext || undefined, resolvedCtx), SQL_GEN_TIMEOUT_MS, "generateSql");
             console.log(`[ROUTE] SQL safe=${sqlResult.safetyCheck.safe}, sql=${sqlResult.safetyCheck.safe ? sqlResult.safetyCheck.sql.slice(0, 2000) : sqlResult.safetyCheck.reason}`);
             if (!sqlResult.safetyCheck.safe) {
               sqlFallbackReason = sqlResult.safetyCheck.reason;
@@ -362,7 +380,8 @@ export async function POST(request: Request) {
 
               console.log(`[ROUTE] BQ result: ${bqResult.data.length} rows`);
               if (bqResult.data.length === 0) {
-                sqlFallbackReason = `查無符合條件的資料 (0 rows)。已執行的 SQL：\n${sqlResult.safetyCheck.sql.slice(0, 500)}`;
+                bqNoData = true;
+                bqNoDataSql = sqlResult.safetyCheck.sql.slice(0, 500);
               } else {
                 bqData = bqResult.data;
                 cachedBqResults.set(cacheKey, {
@@ -591,6 +610,8 @@ export async function POST(request: Request) {
               (step, current, total) => {
                 controller.enqueue(encoder.encode(sseEncode("progress", { step, current, total })));
               },
+              conversationContext || undefined,
+              resolvedCtx,
             );
 
             // Emit research sections as a single event
@@ -692,13 +713,15 @@ export async function POST(request: Request) {
             const sampleRows = bqData.slice(0, 5);
             const dataSummary = `\n\n--- 資料摘要（供圖表類型判斷）---\n- 欄位：${columnNames.join(", ")}\n- 總筆數：${bqData.length}\n- 前 ${sampleRows.length} 筆樣本：\n${JSON.stringify(sampleRows)}\n---`;
             augmentedPrompt = `${prompt}\n\n以下是從 BigQuery 查詢到的真實數據：\n- **精確總筆數：${bqData.length} 筆**（這是完整查詢結果，非取樣）\n- 以下顯示前 ${previewRows.length} 筆供分析：\n\`\`\`json\n${dataPreview}\n\`\`\`\n\n重要規則：\n1. 總數請使用上方的「精確總筆數」，這是真實數據\n2. 分析內容只能基於提供的數據，嚴禁捏造\n3. 如果數據有排序，前幾筆就是最重要的${hasChart ? `\n4. 根據以下資料摘要，判斷最佳圖表類型，在回覆最後一行加上 [CHART_TYPE:類型代碼]（如 bar/line/pie/grouped_bar/area/stacked_bar/horizontal_bar/composed/scatter/radar/donut）${dataSummary}` : ""}`;
+          } else if (bqNoData) {
+            augmentedPrompt = `${prompt}\n\n查詢結果：查無符合條件的資料（0 筆）。\n已執行的 SQL：\n\`${bqNoDataSql}\`\n\n請在回覆中：\n1. 用友善語氣告知使用者「根據查詢條件，目前沒有找到符合的資料」\n2. 分析可能的原因（例如：該品牌在指定時段尚無訂單、該客戶名稱可能有出入、篩選條件過於嚴格等）\n3. 主動建議 2-3 個替代查詢方向（例如：放寬時間範圍、嘗試其他品牌、移除某些篩選條件）\n4. 語氣要友善且積極，像專業分析師提供建議\n5. 這不是系統錯誤，不要使用「錯誤」「異常」「故障」等字眼`;
           } else if (sqlFallbackReason) {
             augmentedPrompt = `${prompt}\n\n注意：系統在提取資料時發生異常，錯誤訊息如下：
 \`${sqlFallbackReason}\`
 
 請在回覆中：
 1. 用友善語氣說明「目前系統在○○時遇到語法錯誤，暫時無法顯示數據」（○○ = 使用者原始問題的摘要）
-2. 將上方錯誤訊息用 \`code\` 格式顯示，說明「請協助將以下錯誤代碼回報給技術團隊」
+2. 將上方錯誤訊息用 \`code\` 格式顯示，說明「請協助將以下錯誤代碼回報給技術團隊進行排除」
 3. 主動提出 2-3 個相關的替代分析角度，讓使用者選擇
 4. 語氣要積極、像一個專業分析師提出替代方案
 5. 嚴禁說「AI 服務暫時無法使用」或類似服務不可用的字眼——系統是正常的，只是這次查詢有語法問題`;
@@ -851,10 +874,12 @@ export async function POST(request: Request) {
             controller.enqueue(encoder.encode(sseEncode("chart", charts[0])));
           }
 
-          // Always remove chart type tags from displayed content (even when no chart)
+          // Always remove chart type tags and code blocks from displayed content
           fullContent = fullContent
             .replace(/\n?\[CHART_TYPE[：:]?\s*[a-z_]+\s*\]/gi, "")
             .replace(/\n?建議圖表[：:].*/g, "")
+            .replace(/```[\s\S]*?```/g, "")
+            .replace(/\n{3,}/g, "\n\n")
             .trim();
 
           // Save assistant message

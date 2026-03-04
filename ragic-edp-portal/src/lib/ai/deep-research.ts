@@ -8,6 +8,7 @@ import { AiKnowledgeRepository } from "@/lib/firestore/ai-knowledge.repo";
 import { buildSystemPrompt } from "./expert-prompt";
 import { aiLog } from "./logger";
 import type { AiChartDataV1, AiKnowledgeSourceV1, QueryTraceV0 } from "@/lib/data/types";
+import type { ResolvedQueryContext } from "./query-context-resolver";
 
 export type ResearchSection = {
   heading: string;
@@ -38,6 +39,8 @@ export async function runDeepResearch(
   topic: string,
   correlationId: string,
   onProgress: ProgressCallback,
+  conversationContext?: string,
+  resolvedContext?: ResolvedQueryContext,
 ): Promise<DeepResearchResult> {
   const startTime = Date.now();
 
@@ -66,7 +69,9 @@ export async function runDeepResearch(
 壞的拆解範例（避免）：
 - 本季總營收是多少？（只回傳一個數字）
 - 新客戶的回購率？（偏離主題且只有一個數字）`,
-    prompt: topic,
+    prompt: resolvedContext?.isFollowUp && resolvedContext.summary
+      ? `${topic}\n\n（對話上下文：${resolvedContext.summary}，子問題應考慮這些條件）`
+      : topic,
     maxOutputTokens: 768,
   } as Parameters<typeof generateText>[0]);
 
@@ -91,7 +96,7 @@ export async function runDeepResearch(
     try {
       // Augment sub-question to ensure SQL produces grouped/comparison data suitable for charting
       const chartFriendlyQuery = `${q}\n（重要：查詢必須使用 GROUP BY 產出多行分組比較數據，適合製作圖表。不要只回傳一個聚合數字。至少要有 3 行以上的結果。）`;
-      const sqlResult = await generateSql(chartFriendlyQuery, correlationId);
+      const sqlResult = await generateSql(chartFriendlyQuery, correlationId, conversationContext, resolvedContext);
       if (!sqlResult.safetyCheck.safe) return null;
       const bqResult = await executeBqQuery(sqlResult.safetyCheck.sql, correlationId);
       return { question: q, data: bqResult.data, trace: bqResult.trace };
