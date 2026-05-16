@@ -355,7 +355,12 @@
     {"id": "e25", "source": "dim_postal", "target": "sheet_41_zipcode", "key": "ragic_id", "description": "地理維度對郵遞區號"},
     {"id": "e26", "source": "dim_customer", "target": "sheet_60_customer", "key": "ragic_id", "description": "客戶維度對原始客戶"},
     {"id": "e27", "source": "dim_product", "target": "sheet_70_product", "key": "ragic_id", "description": "商品維度對原始商品"},
-    {"id": "e28", "source": "dim_campaign", "target": "sheet_80_campaign", "key": "ragic_id", "description": "活動維度對原始活動"}
+    {"id": "e28", "source": "dim_campaign", "target": "sheet_80_campaign", "key": "ragic_id", "description": "活動維度對原始活動"},
+    {"id": "e29", "source": "vw_ls_ga4_source_sales_summary", "target": "vw_ls_ga4_source_sales_daily", "key": "source", "description": "來源銷售總表來自日彙總"},
+    {"id": "e29a", "source": "vw_ls_ga4_paid_organic_monthly", "target": "mat_ga4_source_daily", "key": "brand_code", "description": "付費 vs 自然來自GA4來源"},
+    {"id": "e29b", "source": "vw_ls_ga4_23_google_ads_efficiency_daily", "target": "vw_ls_ga4_source_sales_daily", "key": "source", "description": "Google Ads來自來源銷售"},
+    {"id": "e29c", "source": "vw_ls_ga4_24_facebook_ads_efficiency_daily", "target": "vw_ls_ga4_source_sales_daily", "key": "source", "description": "Facebook Ads來自來源銷售"},
+    {"id": "e29d", "source": "vw_ls_ga4_marketing_efficiency_monthly", "target": "vw_ls_ga4_traffic_sales_daily", "key": "date", "description": "行銷效率來自流量營收"}
   ],
   "items": [
     {
@@ -370,7 +375,7 @@
       "label": "GA4 交叉分析",
       "category": "analysis",
       "summary": "GA4 數據與 ERP 銷售數據的聯合分析，包含流量營收與投資回報",
-      "focus": ["mat_ga4_daily_traffic", "mat_ga4_flat_events", "mat_ga4_source_daily", "mat_ga4_campaign_daily", "mat_ga4_ecommerce", "erp_daily_sales", "vw_ls_ga4_traffic_sales_daily", "vw_ls_ga4_source_sales_daily", "vw_ls_ga4_campaign_sales_daily", "vw_ls_ga4_item_attention_vs_sales"]
+      "focus": ["mat_ga4_daily_traffic", "mat_ga4_flat_events", "mat_ga4_source_daily", "mat_ga4_campaign_daily", "mat_ga4_ecommerce", "erp_daily_sales", "vw_ls_ga4_traffic_sales_daily", "vw_ls_ga4_source_sales_daily", "vw_ls_ga4_campaign_sales_daily", "vw_ls_ga4_item_attention_vs_sales", "vw_ls_ga4_source_sales_summary", "vw_ls_ga4_paid_organic_monthly", "vw_ls_ga4_marketing_efficiency_monthly", "vw_ls_ga4_23_google_ads_efficiency_daily", "vw_ls_ga4_24_facebook_ads_efficiency_daily"]
     },
     {
       "id": "etl-pipeline",
