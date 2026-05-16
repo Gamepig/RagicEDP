@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系統架構完整說明</title>
+<link rel="stylesheet" href="templates/style.css">
+<style>
+  .toc a.active {
+    background: var(--clay);
+    color: var(--white);
+    border-color: var(--clay);
+  }
+  .code-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 800px) { .code-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · 系統架構</div>
+    <h1>系統架構完整說明</h1>
+    <p class="subtitle">程式檔案位置、用途與關聯總覽</p>
+  </header>
+
+  <nav class="toc">
+<a href="#技術棧" class="toc-link">01 技術棧</a>
+<a href="#架構圖" class="toc-link">02 架構圖</a>
+<a href="#Python後端" class="toc-link">03 Python 後端</a>
+<a href="#Portal前端" class="toc-link">04 Portal 前端</a>
+<a href="#資料流程" class="toc-link">05 資料流程</a>
+</nav>
+
+  <main>
+<blockquote>
+<p>類型:GUIDE|狀態:已更新|日期:2026-05-16|版本:v2026-05-16</p>
+</blockquote>
+
+<section id="技術棧">
+<h2>01 技術棧</h2>
+<div class="compare">
+<table>
+<thead>
+<tr><th>層級</th><th>技術</th></tr>
+</thead>
+<tbody>
+<tr><td>前端</td><td>Next.js 15 + TypeScript + shadcn/ui + Recharts</td></tr>
+<tr><td>後端</td><td>Next.js API Routes + Python Cloud Functions</td></tr>
+<tr><td>資料庫</td><td>BigQuery (asia-east1, dataset: erp_backup)</td></tr>
+<tr><td>認證</td><td>NextAuth v5 + Google OAuth</td></tr>
+<tr><td>部署</td><td>Cloud Run (asia-east1) + Cloud Functions</td></tr>
+<tr><td>AI</td><td>Vertex Gemini + SSE streaming + SQL Generator</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="架構圖">
+<h2>02 架構圖</h2>
+<pre><code>[GA4] → BigQuery Materialized Tables
+                     ↓
+[Ragic ERP] → Cloud Functions (backup) → BigQuery ERP Tables
+                     ↓
+        [Looker Studio] ← BigQuery Views
+              ↑
+        [Portal] ← AI Agent ← SQL Generator</code></pre>
+<p><strong>資料流程</strong>：</p>
+<ol>
+<li><strong>Ragic → BigQuery</strong>：Cloud Functions 擷取 Ragic ERP 資料，存入 BigQuery</li>
+<li><strong>GA4 → BigQuery</strong>：Materialized tables 系列 (<code>mat_ga4_*</code>)</li>
+<li><strong>彙總/清洗</strong>：<code>app/etl/</code> 星狀模型 ETL，<code>app/cleaning/</code> 清洗引擎</li>
+<li><strong>展示層</strong>：Portal (Next.js)、Looker Studio 讀取 BigQuery Views</li>
+</ol>
+</section>
+
+<section id="Python後端">
+<h2>03 Python 後端 (<code>app/</code>)</h2>
+
+<h3>備份系統 (<code>app/backup/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>檔案</th><th>用途</th><th>關鍵函式/類別</th></tr>
+</thead>
+<tbody>
+<tr><td><code>backup/config.py</code></td><td>備份配置，Ragic Sheet 欄位定義</td><td><code>SheetConfig</code>, <code>RAGIC_CONFIG</code></td></tr>
+<tr><td><code>backup/incremental.py</code></td><td>增量備份與回補邏輯</td><td><code>IncrementalBackup</code>, <code>backup_erp_data()</code></td></tr>
+<tr><td><code>backup/main.py</code></td><td>Cloud Function 入口點</td><td><code>backup_erp_data()</code>, <code>clean_erp_data()</code></td></tr>
+<tr><td><code>backup/full_backup.py</code></td><td>全量備份</td><td><code>FullBackup</code></td></tr>
+<tr><td><code>backup/manual_backup.py</code></td><td>手動備份入口</td><td><code>ManualBackup</code></td></tr>
+<tr><td><code>backup/bigquery_uploader.py</code></td><td>BigQuery 上傳</td><td><code>BigQueryUploader</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>清洗系統 (<code>app/cleaning/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>檔案</th><th>用途</th><th>關鍵類別/函式</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cleaning/engine.py</code></td><td>清洗引擎主流程</td><td><code>CleaningEngine</code>, <code>run_cleaning()</code></td></tr>
+<tr><td><code>cleaning/sql_cleaner.py</code></td><td>SQL 清洗</td><td><code>SQLCleaner</code></td></tr>
+<tr><td><code>cleaning/field_fixer.py</code></td><td>欄位修正</td><td><code>FieldFixer</code></td></tr>
+<tr><td><code>cleaning/auto_filler.py</code></td><td>自動補足</td><td><code>AutoFiller</code></td></tr>
+<tr><td><code>cleaning/rule_registry.py</code></td><td>清洗規則註冊</td><td><code>RuleRegistry</code>, <code>get_rule()</code></td></tr>
+<tr><td><code>cleaning/result_writer.py</code></td><td>結果寫入 BQ</td><td><code>ResultWriter</code></td></tr>
+<tr><td><code>cleaning/models.py</code></td><td>資料模型</td><td><code>Violation</code>, <code>CleaningResult</code>, <code>CleaningHistory</code></td></tr>
+<tr><td><code>cleaning/derived_calculator.py</code></td><td>衍生欄位計算</td><td><code>DerivedCalculator</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>ETL 系統 (<code>app/etl/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>檔案</th><th>用途</th><th>關鍵函式/類別</th></tr>
+</thead>
+<tbody>
+<tr><td><code>etl/star_schema_etl.py</code></td><td>星狀模型與每日彙總 ETL</td><td><code>StarSchemaETL</code>, <code>run_star_schema_etl()</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>監控系統 (<code>app/ops_monitor/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>檔案</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ops_monitor/main.py</code></td><td>監控主流程 (<code>daily_ops_monitor()</code>)</td></tr>
+<tr><td><code>ops_monitor/checks.py</code></td><td>檢查腳本 (<code>MonitorChecks</code>, <code>evaluate_*</code>)</td></tr>
+<tr><td><code>ops_monitor/auto_fix.py</code></td><td>自動修復 (<code>AutoFixRunner</code>)</td></tr>
+<tr><td><code>ops_monitor/notifier.py</code></td><td>通知 (<code>OpsMonitorNotifier</code>)</td></tr>
+<tr><td><code>ops_monitor/bq_store.py</code></td><td>結果存儲 (<code>OpsMonitorStore</code>)</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="Portal前端">
+<h2>04 Portal 前端 (<code>ragic-edp-portal/</code>)</h2>
+
+<h3>API 路由 (<code>src/app/api/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>路由</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>api/ai/chat/route.ts</code></td><td>AI 問答串流 API</td></tr>
+<tr><td><code>api/ai/sessions/</code></td><td>對話會話管理</td></tr>
+<tr><td><code>api/ai/memory/route.ts</code></td><td>對話記憶</td></tr>
+<tr><td><code>api/auth/[...nextauth]/route.ts</code></td><td>NextAuth 認證</td></tr>
+<tr><td><code>api/activity/</code></td><td>活動日誌</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>AI 專家模組 (<code>src/lib/ai/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>檔案</th><th>用途</th><th>關鍵函式</th></tr>
+</thead>
+<tbody>
+<tr><td><code>lib/ai/sql-generator.ts</code></td><td>SQL 產生器</td><td><code>generateSql()</code></td></tr>
+<tr><td><code>lib/ai/sql-safety.ts</code></td><td>SQL 安全檢查</td><td><code>validateSql()</code></td></tr>
+<tr><td><code>lib/ai/sql-business-rules.ts</code></td><td>商業 SQL 規則</td><td><code>applyBusinessSqlRules()</code></td></tr>
+<tr><td><code>lib/ai/sql-fallbacks.ts</code></td><td>確定性 SQL fallback</td><td><code>getBrandShareFallbackSql()</code></td></tr>
+<tr><td><code>lib/ai/intent-router.ts</code></td><td>意圖分類</td><td><code>classifyIntent()</code></td></tr>
+<tr><td><code>lib/ai/data-catalog.ts</code></td><td>資料目錄白名單</td><td>(表/欄位列表)</td></tr>
+<tr><td><code>lib/ai/query-context-resolver.ts</code></td><td>對話上下文解析</td><td><code>resolveQueryContext()</code></td></tr>
+<tr><td><code>lib/ai/schema-cache.ts</code></td><td>BigQuery schema cache</td><td><code>getSchemaCache()</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>分析報表模組 (<code>src/lib/analytics/</code>)</h3>
+<div class="compare">
+<table>
+<thead>
+<tr><th>檔案</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>lib/analytics/chart_registry.ts</code></td><td>圖表規格唯一來源 (<code>ChartSpec[]</code>)</td></tr>
+<tr><td><code>lib/analytics/axis_labels.ts</code></td><td>軸標籤 (<code>AXIS_LABELS</code>)</td></tr>
+<tr><td><code>lib/analytics/field-display-names.ts</code></td><td>欄位顯示名稱</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="資料流程">
+<h2>05 資料流程詳細</h2>
+
+<h3>Ragic → BigQuery</h3>
+<pre><code>1. Ragic API (ap6.ragic.com/grefun)
+   ↓
+2. Cloud Functions backup-erp-incremental
+   - 擷取 Sheet 10,20,30,40,41,50,60,70,80,99
+   - 增量判斷：last_modified + 回補視窗 (ORDER_RECONCILE_WINDOW_DAYS)
+   - Tombstone 標記已不存在訂單
+   ↓
+3. BigQuery erp_backup 資料集
+   - sheet_10_brand, sheet_20_channel ... sheet_99_order_detail</code></pre>
+
+<h3>AI 問答流程</h3>
+<pre><code>1. 使用者提問 → api/ai/chat/route.ts
+   ↓
+2. classifyIntent() 判斷意圖類型
+   ↓
+3. resolveQueryContext() 解析上下文
+   ↓
+4. SQL 產生 → validateSql() 安全檢查
+   ↓
+5. SSE 串流回傳</code></pre>
+</section>
+
+
+  </main>
+
+  <footer>
+    <span>系統架構完整說明 · 2026-05-16</span>
+    <span>參考：<a href="https://thariqs.github.io/html-effectiveness/">The Unreasonable Effectiveness of HTML</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

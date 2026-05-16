@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal AI 專家設定</title>
+<link rel="stylesheet" href="templates/style.css">
+<style>
+  /* 文件特定樣式覆蓋放在這裡，通用樣式在 style.css */
+  .toc a.active {
+    background: var(--clay);
+    color: var(--white);
+    border-color: var(--clay);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · AI 專家</div>
+    <h1>Portal AI 專家設定</h1>
+    <p class="subtitle">User Query → Intent Router → SQL Generator → BigQuery → Response</p>
+  </header>
+
+  <!-- TOC 由轉換腳本從 h2/h3 生成 -->
+  <nav class="toc">
+<a href="#ai-問答流程" class="toc-link">01 AI 問答流程</a>
+<a href="#核心程式詳細說明" class="toc-link">02 核心程式詳細說明</a>
+<a href="#sql-產生規則" class="toc-link">03 SQL 產生規則</a>
+<a href="#fallback-機制" class="toc-link">04 Fallback 機制</a>
+<a href="#資料目錄白名單" class="toc-link">05 資料目錄白名單</a>
+</nav>
+
+  <!-- Content 由轉換腳本從 Markdown body 轉換 -->
+  <main>
+<blockquote>
+<p>類型:REFERENCE|狀態:已更新|日期:2026-05-16|版本:v2026-05-16</p>
+</blockquote>
+<h2 id="ai-問答流程">01 AI 問答流程</h2>
+<pre><code>User Query → Intent Router → SQL Generator → BigQuery → Response</code></pre>
+<h2 id="核心程式詳細說明">02 核心程式詳細說明</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>檔案</th>
+<th>作用</th>
+<th>詳細說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/app/api/ai/chat/route.ts</code></td>
+<td>AI Chat API 端點</td>
+<td>接收 SSE 串流請求，驗證登入、授權、訊息長度與 session 限制，呼叫 intent-router 進行意圖分類，呼叫 sql-generator 產生 SQL，執行查詢後回傳 token/progress/trace/done 事件</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/intent-router.ts</code></td>
+<td>意圖分類</td>
+<td><code>classifyIntent()</code> 根據 prompt 判斷 <code>simple_answer</code>、<code>query_database</code>、<code>generate_chart</code>、<code>deep_research</code>、<code>query_ragic</code> 等類型。使用關鍵字與語境匹配</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/sql-generator.ts</code></td>
+<td>SQL 產生器</td>
+<td>讀取 schema cache 與 data catalog，套用 Vertex AI 生成 SQL，支援 deterministic fallback</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/sql-fallbacks.ts</code></td>
+<td>備用邏輯</td>
+<td>固定 SQL 模板避免常見問題完全依賴 LLM：<code>getBrandShareFallbackSql()</code>、<code>buildDeterministicGa4SourceSql()</code>、<code>buildDeterministicWeekendWeekdayAovSql()</code>、<code>buildDeterministicGa4RagicDailyDiffSql()</code></td>
+</tr>
+<tr>
+<td><code>src/lib/ai/sql-safety.ts</code></td>
+<td>SQL 安全檢查</td>
+<td><code>validateSql()</code> 禁止 <code>INSERT</code>、<code>UPDATE</code>、<code>DELETE</code>、<code>DROP</code>、<code>CREATE</code>、<code>ALTER</code>、<code>TRUNCATE</code>、多重語句、沒有 <code>FROM</code> 的 SQL、結尾停在 <code>WHERE</code>/<code>GROUP BY</code>。自動補 <code>LIMIT 200</code></td>
+</tr>
+<tr>
+<td><code>src/lib/ai/data-catalog.ts</code></td>
+<td>資料白名單</td>
+<td>定義 AI 可使用的表與欄位，防止發明不存在的欄位</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/schema-cache.ts</code></td>
+<td>BigQuery schema cache</td>
+<td>快取資料表結構，加速 SQL 產生</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/query-context-resolver.ts</code></td>
+<td>對話上下文解析</td>
+<td><code>resolveQueryContext()</code> 與 <code>resolveDateRangeFromText()</code> 解析品牌、日期、通路與前文延續條件</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/ragic-query-gen.ts</code></td>
+<td>Ragic 查詢產生</td>
+<td><code>generateRagicQuery()</code> 產生 Ragic where 條件，支援日期區間強制與上下文繼承</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/sql-business-rules.ts</code></td>
+<td>商業 SQL 規則</td>
+<td><code>applyBusinessSqlRules()</code> 修正口徑：營收預設含運、明細預設含運、預設排除取消/停用訂單</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/vertex-client.ts</code></td>
+<td>Vertex AI 客戶端</td>
+<td>封裝 Vertex AI 請求，處理 SSE 串流回應</td>
+</tr>
+<tr>
+<td><code>src/lib/ai/expert-prompt.ts</code></td>
+<td>系統提示詞</td>
+<td>定義 AI 行為規則與輸出格式</td>
+</tr>
+</tbody>
+</table>
+<h2 id="sql-產生規則">03 SQL 產生規則</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>類型</th>
+<th>規則</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>營收查詢</td>
+<td>預設 <code>LOWER(status)='toggle-on'</code>，含運口徑 <code>order_amount_with_shipping</code></td>
+</tr>
+<tr>
+<td>GA4 source/medium</td>
+<td>禁用 <code>date</code> 欄位，用 <code>event_date</code></td>
+</tr>
+<tr>
+<td>品牌查詢</td>
+<td>JOIN 用 <code>brand_code</code>，顯示用 <code>brand_name</code></td>
+</tr>
+<tr>
+<td>表白名單</td>
+<td>見 <code>data-catalog.ts</code> 完整列表</td>
+</tr>
+</tbody>
+</table>
+<h2 id="fallback-機制">04 Fallback 機制</h2>
+<ol type="1">
+<li>SQL 執行失敗 → 嘗試簡化查詢</li>
+<li>資料為空 → 提供建議或替代日期</li>
+<li>欄位錯誤 → 使用類似欄位或建議修正</li>
+</ol>
+<h2 id="資料目錄白名單">05 資料目錄白名單</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>資料來源</th>
+<th>表</th>
+<th>可用欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA4</td>
+<td><code>mat_ga4_daily_traffic</code></td>
+<td>brand_code, date, sessions, users, new_users, engaged_sessions, engaged_rate, avg_engagement_sec, purchasers, cvr</td>
+</tr>
+<tr>
+<td>GA4</td>
+<td><code>mat_ga4_source_daily</code></td>
+<td>brand_code, event_date, source, medium, sessions, users, first_visit_count, engaged_rate, avg_engagement_sec, purchasers, cvr</td>
+</tr>
+<tr>
+<td>ERP</td>
+<td><code>view_order_customer</code></td>
+<td>order_code, order_date, customer_code, customer_name, status, order_amount, order_amount_with_shipping, brand_code</td>
+</tr>
+<tr>
+<td>ERP</td>
+<td><code>ls_v_orders_ext</code></td>
+<td>order_code, order_date, customer_code, customer_name, order_amount, order_amount_with_shipping, city, district</td>
+</tr>
+<tr>
+<td>ERP</td>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>order_code, order_date, customer_code, customer_name, product_code, product_name, brand_code, brand_name, channel_code, channel_name, quantity, unit_price, subtotal, order_amount, amount_paid, amount_with_shipping, payment_method, payment_name, logistics_name, shipping_income, status</td>
+</tr>
+<tr>
+<td>ERP</td>
+<td><code>erp_daily_sales</code></td>
+<td>date, brand_code, revenue, orders, customers, aov</td>
+</tr>
+<tr>
+<td>ERP</td>
+<td><code>v_customer_rfm</code></td>
+<td>customer_code, recency, frequency, monetary, rfm_segment, last_order_date</td>
+</tr>
+</tbody>
+</table>
+
+  </main>
+
+  <footer>
+    <span>AI 專家 · 2026-05-16</span>
+    <span>參考：<a href="https://thariqs.github.io/html-effectiveness/">The Unreasonable Effectiveness of HTML</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

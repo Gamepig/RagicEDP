@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>%TITLE%</title>
+<link rel="stylesheet" href="templates/style.css">
+<style>
+  /* 文件特定樣式覆蓋放在這裡，通用樣式在 style.css */
+  .toc a.active {
+    background: var(--clay);
+    color: var(--white);
+    border-color: var(--clay);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · %CATEGORY%</div>
+    <h1>%TITLE%</h1>
+    %SUBTITLE_BLOCK%
+  </header>
+
+  <!-- TOC 由轉換腳本從 h2/h3 生成 -->
+  %TOC_BLOCK%
+
+  <!-- Content 由轉換腳本從 Markdown body 轉換 -->
+  <main>
+%CONTENT%
+  </main>
+
+  <footer>
+    <span>%FOOTER_LEFT%</span>
+    <span>參考：<a href="https://thariqs.github.io/html-effectiveness/">The Unreasonable Effectiveness of HTML</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # --- Build stage ---
 FROM node:20-slim AS builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.24.0 --activate
 
 WORKDIR /app
 

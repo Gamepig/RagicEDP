@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BigQuery 資料庫架構</title>
+<link rel="stylesheet" href="templates/style.css">
+<style>
+  /* 文件特定樣式覆蓋放在這裡，通用樣式在 style.css */
+  .toc a.active {
+    background: var(--clay);
+    color: var(--white);
+    border-color: var(--clay);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · BigQuery 架構</div>
+    <h1>BigQuery 資料庫架構</h1>
+    <p class="subtitle">sheet_* → dim_*/fact_* → view_* → ls_* → mv_* → Looker Studio</p>
+  </header>
+
+  <!-- TOC 由轉換腳本從 h2/h3 生成 -->
+  <nav class="toc">
+<a href="#資料庫分層架構-medallion-architecture" class="toc-link">資料庫分層架構 (Medallion Architecture)</a>
+<a href="#六層資料流程" class="toc-link">六層資料流程</a>
+<a href="#核心星狀模型" class="toc-link">核心星狀模型</a>
+  <a href="#訂單分析模型" class="toc-link">訂單分析模型</a>
+  <a href="#客戶分析模型" class="toc-link">客戶分析模型</a>
+<a href="#looker-studio-view-list-80-個檔案" class="toc-link">Looker Studio View List (80 個檔案)</a>
+<a href="#關聯鍵總表" class="toc-link">關聯鍵總表</a>
+<a href="#欄位口徑標準" class="toc-link">欄位口徑標準</a>
+</nav>
+
+  <!-- Content 由轉換腳本從 Markdown body 轉換 -->
+  <main>
+<blockquote>
+<p>類型:REFERENCE|狀態:已合併|日期:2026-05-16|版本:v2026-05-16</p>
+</blockquote>
+<h2 id="資料庫分層架構-medallion-architecture">資料庫分層架構 (Medallion Architecture)</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>層級</th>
+<th>說明</th>
+<th>表範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bronze</td>
+<td>原始層 <code>sheet_*</code></td>
+<td>Ragic 備份原始資料</td>
+</tr>
+<tr>
+<td>Silver</td>
+<td>清洗層 <code>view_*</code></td>
+<td>資料品質過濾</td>
+</tr>
+<tr>
+<td>Gold</td>
+<td>分析層 <code>fact_*</code>/<code>dim_*</code></td>
+<td>星狀模型</td>
+</tr>
+<tr>
+<td>Looker</td>
+<td>報表層 <code>ls_*</code></td>
+<td>圖表預聚合</td>
+</tr>
+<tr>
+<td>Materialized</td>
+<td>加速層 <code>mv_*</code></td>
+<td>高頻快取</td>
+</tr>
+<tr>
+<td>Ops</td>
+<td>維運層</td>
+<td>監控與清洗</td>
+</tr>
+</tbody>
+</table>
+<h2 id="六層資料流程">六層資料流程</h2>
+<pre><code>sheet_* → dim_*/fact_* → view_* → ls_* → mv_* → Looker Studio</code></pre>
+<h2 id="核心星狀模型">核心星狀模型</h2>
+<h3 id="訂單分析模型">訂單分析模型</h3>
+<pre><code>fact_orders ←→ fact_order_details
+     ↓              ↓
+dim_customer   dim_product → dim_brand
+     ↓              ↓
+     view_order_customer ← ls_v_order_lines_ext</code></pre>
+<h3 id="客戶分析模型">客戶分析模型</h3>
+<pre><code>view_order_customer → v_customer_rfm → mv_customer_rfm → ls_p3_rfm
+                           ↓
+                   view_customer_brand</code></pre>
+<h2 id="looker-studio-view-list-80-個檔案">Looker Studio View List (80 個檔案)</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>分類</th>
+<th>檔案數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ls_p1_* 圖表</td>
+<td>6</td>
+</tr>
+<tr>
+<td>ls_p3_* RFM</td>
+<td>1</td>
+</tr>
+<tr>
+<td>ls_v_* 分析</td>
+<td>8</td>
+</tr>
+<tr>
+<td>POC/測試</td>
+<td>15+</td>
+</tr>
+</tbody>
+</table>
+<h2 id="關聯鍵總表">關聯鍵總表</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>關聯鍵</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>order_code</code></td>
+<td>訂單與明細 JOIN</td>
+</tr>
+<tr>
+<td><code>customer_code</code></td>
+<td>訂單與客戶 JOIN</td>
+</tr>
+<tr>
+<td><code>product_code</code></td>
+<td>明細與商品 JOIN</td>
+</tr>
+<tr>
+<td><code>brand_code</code></td>
+<td>ERP ↔︎ GA4 JOIN</td>
+</tr>
+<tr>
+<td><code>channel_code</code></td>
+<td>通路分析</td>
+</tr>
+</tbody>
+</table>
+<h2 id="欄位口徑標準">欄位口徑標準</h2>
+<ul>
+<li>營收：<code>order_amount_with_shipping</code> (含運)</li>
+<li>金額：<code>amount_paid</code> (不含運)</li>
+<li>狀態：<code>LOWER(status)='toggle-on'</code></li>
+</ul>
+
+  </main>
+
+  <footer>
+    <span>BigQuery 架構 · 2026-05-16</span>
+    <span>參考：<a href="https://thariqs.github.io/html-effectiveness/">The Unreasonable Effectiveness of HTML</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

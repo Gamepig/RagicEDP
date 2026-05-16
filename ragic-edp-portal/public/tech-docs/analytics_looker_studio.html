@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Looker Studio 圖表設定</title>
+<link rel="stylesheet" href="templates/style.css">
+<style>
+  /* 文件特定樣式覆蓋放在這裡，通用樣式在 style.css */
+  .toc a.active {
+    background: var(--clay);
+    color: var(--white);
+    border-color: var(--clay);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · Looker Studio</div>
+    <h1>Looker Studio 圖表設定</h1>
+    
+  </header>
+
+  <!-- TOC 由轉換腳本從 h2/h3 生成 -->
+  <nav class="toc">
+<a href="#全報表共同設定" class="toc-link">01 全報表共同設定</a>
+<a href="#pages-與圖表清單" class="toc-link">02 Pages 與圖表清單</a>
+  <a href="#page-a高層營運總覽" class="toc-link">Page A｜高層營運總覽</a>
+  <a href="#page-b商品與品牌分析" class="toc-link">Page B｜商品與品牌分析</a>
+  <a href="#page-c通路金流物流分析" class="toc-link">Page C｜通路／金流／物流分析</a>
+  <a href="#page-d客戶與地理" class="toc-link">Page D｜客戶與地理</a>
+  <a href="#page-e客群與消費洞察" class="toc-link">Page E｜客群與消費洞察</a>
+<a href="#looker-studio-自動化腳本" class="toc-link">03 Looker Studio 自動化腳本</a>
+<a href="#page-f趨勢與異常" class="toc-link">Page F｜趨勢與異常</a>
+<a href="#page-g通路roi" class="toc-link">Page G｜通路 ROI</a>
+<a href="#page-hga4流量標籤動能" class="toc-link">Page H｜GA4 流量標籤動能</a>
+<a href="#page-iga4-35月度行銷效率儀表板" class="toc-link">Page I｜GA4-35 月度行銷效率儀表板</a>
+<a href="#ga4-x-erp-交叉分析-view" class="toc-link">04 GA4 x ERP 交叉分析 View</a>
+<a href="#驗收-sql" class="toc-link">04 驗收 SQL</a>
+<a href="#驗收-sql" class="toc-link">04 驗收 SQL</a>
+</nav>
+
+  <!-- Content 由轉換腳本從 Markdown body 轉換 -->
+  <main>
+<blockquote>
+<p>類型:GUIDE|狀態:已更新|日期:2026-05-16|版本:v2026-05-16</p>
+</blockquote>
+<h2 id="全報表共同設定">01 全報表共同設定</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>項目</th>
+<th>設定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BigQuery project</td>
+<td><code>b25h01-ragic</code></td>
+</tr>
+<tr>
+<td>Dataset</td>
+<td><code>erp_backup</code></td>
+</tr>
+<tr>
+<td>時區</td>
+<td><code>Asia/Taipei</code></td>
+</tr>
+<tr>
+<td>品牌控制欄位</td>
+<td><code>brand_name</code> 顯示，<code>brand_code</code> 關聯</td>
+</tr>
+<tr>
+<td>日期控制欄位</td>
+<td>daily view 使用 <code>date</code>，monthly view 使用 <code>month</code></td>
+</tr>
+<tr>
+<td>營收口徑</td>
+<td>排除 <code>toggle-off</code>，含運實收優先</td>
+</tr>
+</tbody>
+</table>
+<h2 id="pages-與圖表清單">02 Pages 與圖表清單</h2>
+<h3 id="page-a高層營運總覽">Page A｜高層營運總覽</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01</td>
+<td>本月每日銷售趨勢</td>
+<td><code>ls_v_daily_sales_trend_this_month</code></td>
+<td>order_date</td>
+<td>revenue</td>
+</tr>
+<tr>
+<td>03</td>
+<td>月度營收累積曲線</td>
+<td><code>ls_v_03_monthly_revenue_accumulation</code></td>
+<td>order_date</td>
+<td>cumulative_revenue</td>
+</tr>
+<tr>
+<td>06</td>
+<td>訂單平均單價 AOV</td>
+<td><code>ls_v_orders_ext</code></td>
+<td>-</td>
+<td>AOV (含運實收 ÷ 有效訂單數)</td>
+</tr>
+<tr>
+<td>02</td>
+<td>昨日銷售 Top 10 品牌</td>
+<td><code>ls_v_02_top_10_brands_yesterday</code></td>
+<td>brand_name</td>
+<td>revenue</td>
+</tr>
+<tr>
+<td>37</td>
+<td>品牌營收貢獻佔比</td>
+<td><code>ls_p1_2_brand_revenue_share</code></td>
+<td>brand_name</td>
+<td>revenue_sum</td>
+</tr>
+<tr>
+<td>NEW-19</td>
+<td>週末 vs 平日營收/銷量對比</td>
+<td><code>ls_p1_10_weekend_weekday_qty</code></td>
+<td>day_type</td>
+<td>quantity_sum, revenue_sum</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-b商品與品牌分析">Page B｜商品與品牌分析</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>13</td>
+<td>每日商品銷量趨勢</td>
+<td><code>ls_p1_1_daily_product_quantity</code></td>
+<td>order_date</td>
+<td>quantity_sum</td>
+</tr>
+<tr>
+<td>14</td>
+<td>熱銷商品 Top 20</td>
+<td><code>ls_p1_5_top20_products_by_qty</code></td>
+<td>product_name</td>
+<td>quantity_sum</td>
+</tr>
+<tr>
+<td>38</td>
+<td>各品牌平均單價波動 ASP</td>
+<td><code>ls_p1_9_monthly_asp</code></td>
+<td>order_month</td>
+<td>asp</td>
+</tr>
+<tr>
+<td>39</td>
+<td>品類 x 星期熱圖</td>
+<td><code>ls_p1_4_category_dow_heat</code></td>
+<td>day_of_week_label</td>
+<td>revenue_sum</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-c通路金流物流分析">Page C｜通路／金流／物流分析</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>05</td>
+<td>通路貢獻度趨勢</td>
+<td><code>ls_v_05_channel_contribution_trend</code></td>
+<td>order_date</td>
+<td>revenue_sum</td>
+</tr>
+<tr>
+<td>25</td>
+<td>支付方式結構</td>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>payment_method_norm</td>
+<td>COUNT_DISTINCT(order_code)</td>
+</tr>
+<tr>
+<td>NEW-21</td>
+<td>物流方式佔比</td>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>logistics_name_norm</td>
+<td>COUNT_DISTINCT(order_code)</td>
+</tr>
+<tr>
+<td>NEW-22</td>
+<td>運費收入趨勢</td>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>order_date</td>
+<td>shipping_income</td>
+</tr>
+<tr>
+<td>NEW-23</td>
+<td>含運差額分布</td>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>shipping_delta_bucket_50</td>
+<td>COUNT_DISTINCT(order_code)</td>
+</tr>
+<tr>
+<td>NEW-25</td>
+<td>希望配達時段分布</td>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>desired_delivery_timeslot_norm</td>
+<td>COUNT_DISTINCT(order_code)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-d客戶與地理">Page D｜客戶與地理</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NEW-17</td>
+<td>Top 城市營收排行</td>
+<td><code>ls_v_orders_ext</code></td>
+<td>city</td>
+<td>order_amount_with_shipping</td>
+</tr>
+<tr>
+<td>NEW-18</td>
+<td>城市營收月趨勢</td>
+<td><code>ls_v_orders_ext</code></td>
+<td>order_date</td>
+<td>order_amount_with_shipping</td>
+</tr>
+<tr>
+<td>19</td>
+<td>RFM 客戶分群分布</td>
+<td><code>ls_p3_rfm</code></td>
+<td>recency_days × frequency</td>
+<td>monetary</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-e客群與消費洞察">Page E｜客群與消費洞察</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20-1</td>
+<td>客戶消費頻次分布</td>
+<td><code>ls_p3_rfm</code></td>
+<td>frequency_bucket</td>
+<td>COUNT_DISTINCT(customer_name)</td>
+</tr>
+<tr>
+<td>20-2</td>
+<td>最近回購天數分布</td>
+<td><code>ls_p3_rfm</code></td>
+<td>recency_bucket</td>
+<td>COUNT_DISTINCT(customer_name)</td>
+</tr>
+<tr>
+<td>20-3</td>
+<td>訂單金額區間結構</td>
+<td><code>ls_v_orders_ext</code></td>
+<td>order_amount_bucket_500</td>
+<td>COUNT_DISTINCT(order_code)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-f趨勢與異常">Page F｜趨勢與異常</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA4-14</td>
+<td>每日流量趨勢</td>
+<td><code>vw_ls_ga4_traffic_sales_daily</code></td>
+<td>date</td>
+<td>sessions, users, new_visitors, engaged_rate</td>
+</tr>
+<tr>
+<td>GA4-17</td>
+<td>流量轉換漏斗</td>
+<td><code>vw_ls_ga4_traffic_sales_daily</code></td>
+<td>date</td>
+<td>cvr, engagement_rate</td>
+</tr>
+<tr>
+<td>GA4-20</td>
+<td>品牌流量對比</td>
+<td><code>vw_ls_ga4_traffic_sales_daily</code></td>
+<td>brand_name</td>
+<td>sessions, users, revenue</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-g通路roi">Page G｜通路 ROI</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA4-18</td>
+<td>加購到結帳轉換</td>
+<td><code>vw_ls_ga4_cart_vs_order_daily</code></td>
+<td>brand_name</td>
+<td>add_to_cart_count, begin_checkout_count, order_count</td>
+</tr>
+<tr>
+<td>GA4-19</td>
+<td>轉換率趨勢</td>
+<td><code>vw_ls_ga4_traffic_sales_daily</code></td>
+<td>date</td>
+<td>cvr, orders</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-hga4流量標籤動能">Page H｜GA4 流量標籤動能</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA4-21</td>
+<td>來源總覽</td>
+<td><code>vw_ls_ga4_source_sales_summary</code></td>
+<td>source, medium</td>
+<td>sessions, revenue, orders, aov, revenue_per_session</td>
+</tr>
+<tr>
+<td>GA4-23</td>
+<td>Google Ads 效益</td>
+<td><code>vw_ls_ga4_23_google_ads_efficiency_daily</code></td>
+<td>date</td>
+<td>sessions, revenue, google_cpc_sessions</td>
+</tr>
+<tr>
+<td>GA4-24</td>
+<td>Facebook 廣告分析</td>
+<td><code>vw_ls_ga4_24_facebook_ads_efficiency_daily</code></td>
+<td>date</td>
+<td>sessions, fb_paid_sessions, paidmedia_sessions, revenue</td>
+</tr>
+<tr>
+<td>GA4-26</td>
+<td>付費 vs 自然流量</td>
+<td><code>vw_ls_ga4_source_sales_daily</code></td>
+<td>source, medium</td>
+<td>sessions, revenue</td>
+</tr>
+</tbody>
+</table>
+<h3 id="page-iga4-35月度行銷效率儀表板">Page I｜GA4-35 月度行銷效率儀表板</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>ID</th>
+<th>圖表名稱</th>
+<th>View</th>
+<th>維度</th>
+<th>指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA4-29</td>
+<td>活動效益趨勢</td>
+<td><code>vw_ls_ga4_campaign_sales_daily</code></td>
+<td>date</td>
+<td>sessions, revenue, orders</td>
+</tr>
+<tr>
+<td>GA4-31</td>
+<td>商品關注 vs 銷售</td>
+<td><code>vw_ls_ga4_item_attention_vs_sales</code></td>
+<td>item_name</td>
+<td>view_count, sold_quantity</td>
+</tr>
+<tr>
+<td>GA4-32</td>
+<td>活動轉換率</td>
+<td><code>vw_ls_ga4_campaign_sales_daily</code></td>
+<td>campaign_name</td>
+<td>cvr, revenue_per_session</td>
+</tr>
+<tr>
+<td>GA4-33</td>
+<td>活動 ROAS</td>
+<td><code>vw_ls_ga4_campaign_sales_daily</code></td>
+<td>campaign_name</td>
+<td>revenue, orders</td>
+</tr>
+<tr>
+<td>GA4-35</td>
+<td>行銷效率月報</td>
+<td><code>vw_ls_ga4_marketing_efficiency_monthly</code></td>
+<td>month</td>
+<td>sessions, cvr, engagement_rate, revenue, orders, aov</td>
+</tr>
+</tbody>
+</table>
+<h2 id="looker-studio-自動化腳本">03 Looker Studio 自動化腳本</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>腳本</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>build_aesthetic_charts.py</code></td>
+<td>建立圖表版面與樣式</td>
+</tr>
+<tr>
+<td><code>build_page_a_remaining.py</code></td>
+<td>Page A 剩餘圖表</td>
+</tr>
+<tr>
+<td><code>build_page_b_charts.py</code></td>
+<td>Page B 圖表</td>
+</tr>
+<tr>
+<td><code>selenium_clone.py</code></td>
+<td>無頭瀏覽器複製報表</td>
+</tr>
+<tr>
+<td><code>chart_manifest.yaml</code></td>
+<td>圖表規格與執行清單</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ga4-x-erp-交叉分析-view">04 GA4 x ERP 交叉分析 View</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>View</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vw_ls_ga4_traffic_sales_daily</code></td>
+<td>GA4 14, 17, 20</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_cart_vs_order_daily</code></td>
+<td>GA4 18</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_source_sales_daily</code></td>
+<td>GA4 23, 24, 26</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_source_sales_summary</code></td>
+<td>GA4 21</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_paid_organic_monthly</code></td>
+<td>GA4 22</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_campaign_sales_daily</code></td>
+<td>GA4 29, 32, 33</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_item_attention_vs_sales</code></td>
+<td>GA4 31</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_marketing_efficiency_monthly</code></td>
+<td>GA4 35</td>
+</tr>
+</tbody>
+</table>
+<h2 id="驗收-sql">04 驗收 SQL</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>檔案</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ragic-edp-portal/sql/ga4/10_ga4_cross_analysis_validation_checks.sql</code></td>
+<td>驗證 View</td>
+</tr>
+<tr>
+<td><code>ragic-edp-portal/sql/ga4/11_sales_reconciliation_ragic_vs_bq.sql</code></td>
+<td>營收對帳</td>
+</tr>
+</tbody>
+</table>
+
+  </main>
+
+  <footer>
+    <span>Looker Studio · 2026-05-16</span>
+    <span>參考：<a href="https://thariqs.github.io/html-effectiveness/">The Unreasonable Effectiveness of HTML</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

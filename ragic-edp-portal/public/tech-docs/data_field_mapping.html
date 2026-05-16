@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>資料欄位對照表</title>
+<link rel="stylesheet" href="templates/style.css">
+<style>
+  /* 文件特定樣式覆蓋放在這裡，通用樣式在 style.css */
+  .toc a.active {
+    background: var(--clay);
+    color: var(--white);
+    border-color: var(--clay);
+  }
+  /* 欄位細節樣式 */
+  .field-detail {
+    padding: 0.75rem 1rem;
+    background: var(--sand);
+    border-left: 3px solid var(--clay);
+  }
+  .field-specs {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--charcoal);
+  }
+  .field-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+  .field-list li {
+    margin: 0.15rem 0;
+  }
+  .field-list code {
+    background: var(--white);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · 欄位對照</div>
+    <h1>資料欄位對照表</h1>
+    
+  </header>
+
+  <!-- TOC 由轉換腳本從 h2/h3 生成 -->
+  <nav class="toc">
+<a href="#資料來源分層" class="toc-link">01 資料來源分層</a>
+<a href="#ga4-官方欄位" class="toc-link">02 GA4 官方欄位</a>
+<a href="#erp-與交叉分析欄位" class="toc-link">03 ERP 與交叉分析欄位</a>
+<a href="#資料表完整欄位清單" class="toc-link">04 資料表完整欄位清單</a>
+  <a href="#ga4-materialized-tables" class="toc-link">GA4 materialized tables</a>
+  <a href="#erp-核心-view" class="toc-link">ERP 核心 View</a>
+  <a href="#ga4-erp-交叉分析-view" class="toc-link">GA4-ERP 交叉分析 View</a>
+<a href="#日期欄位規則" class="toc-link">05 日期欄位規則</a>
+<a href="#ai-查詢限制" class="toc-link">06 AI 查詢限制</a>
+</nav>
+
+  <!-- Content 由轉換腳本從 Markdown body 轉換 -->
+  <main>
+<blockquote>
+<p>類型:REFERENCE|狀態:已更新|日期:2026-05-16|版本:v2026-05-16</p>
+</blockquote>
+<h2 id="資料來源分層">01 資料來源分層</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>層級</th>
+<th>位置</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA4 materialized tables</td>
+<td><code>mat_ga4_daily_traffic</code>、<code>mat_ga4_source_daily</code>、<code>mat_ga4_campaign_daily</code>、<code>mat_ga4_sessions</code>、<code>mat_ga4_ecommerce</code>、<code>mat_ga4_flat_events</code></td>
+<td>GA4 流量、事件、來源媒介、活動與商品事件</td>
+</tr>
+<tr>
+<td>ERP/Ragic tables</td>
+<td><code>view_order_customer</code>、<code>ls_v_order_lines</code>、<code>ls_v_order_lines_ext</code>、<code>ls_v_orders_ext</code>、<code>erp_daily_sales</code></td>
+<td>訂單、明細、品牌、通路、金流、物流與營收</td>
+</tr>
+<tr>
+<td>交叉分析 views</td>
+<td><code>vw_ls_ga4_*</code></td>
+<td>GA4 與 ERP 按品牌、日期、來源、活動做整合</td>
+</tr>
+<tr>
+<td>Portal chart registry</td>
+<td><code>src/lib/analytics/chart_registry.ts</code></td>
+<td>Portal 圖表的唯一規格來源</td>
+</tr>
+<tr>
+<td>AI data catalog</td>
+<td><code>src/lib/ai/data-catalog.ts</code></td>
+<td>AI 產生 SQL 時可使用的白名單資料表與欄位</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ga4-官方欄位">02 GA4 官方欄位</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>欄位</th>
+<th>顯示名稱</th>
+<th>使用表</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>brand_code</code></td>
+<td>品牌代碼</td>
+<td>所有 GA4 表</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>流量來源</td>
+<td><code>mat_ga4_source_daily</code>、<code>vw_ls_ga4_source_sales_*</code></td>
+</tr>
+<tr>
+<td><code>medium</code></td>
+<td>流量媒介</td>
+<td><code>mat_ga4_source_daily</code>、<code>mat_ga4_campaign_daily</code></td>
+</tr>
+<tr>
+<td><code>campaign_name</code></td>
+<td>廣告活動</td>
+<td><code>mat_ga4_campaign_daily</code>、<code>vw_ls_ga4_campaign_sales_daily</code></td>
+</tr>
+<tr>
+<td><code>date</code></td>
+<td>日期</td>
+<td><code>mat_ga4_daily_traffic</code>、<code>mat_ga4_campaign_daily</code></td>
+</tr>
+<tr>
+<td><code>event_date</code></td>
+<td>事件日期</td>
+<td><code>mat_ga4_source_daily</code>、<code>mat_ga4_sessions</code>、<code>mat_ga4_ecommerce</code>、<code>mat_ga4_flat_events</code></td>
+</tr>
+<tr>
+<td><code>sessions</code></td>
+<td>造訪次數</td>
+<td>GA4 traffic/source/campaign</td>
+</tr>
+<tr>
+<td><code>users</code></td>
+<td>使用者</td>
+<td>GA4 traffic/source/campaign</td>
+</tr>
+<tr>
+<td><code>new_users</code> / <code>new_visitors</code></td>
+<td>新使用者</td>
+<td><code>mat_ga4_daily_traffic</code>、交叉分析 view</td>
+</tr>
+<tr>
+<td><code>engaged_rate</code> / <code>engagement_rate</code></td>
+<td>互動率</td>
+<td>GA4 traffic/source/campaign</td>
+</tr>
+<tr>
+<td><code>avg_engagement_sec</code></td>
+<td>平均互動時間(秒)</td>
+<td>GA4 traffic/source/campaign</td>
+</tr>
+<tr>
+<td><code>purchasers</code></td>
+<td>購買者</td>
+<td>GA4 traffic/source/campaign</td>
+</tr>
+<tr>
+<td><code>cvr</code></td>
+<td>購買轉換率(CVR)</td>
+<td>衍生欄位 <code>purchasers / sessions</code></td>
+</tr>
+<tr>
+<td><code>item_name</code></td>
+<td>商品名稱</td>
+<td><code>mat_ga4_ecommerce</code></td>
+</tr>
+<tr>
+<td><code>item_revenue</code></td>
+<td>商品收入</td>
+<td><code>mat_ga4_ecommerce</code></td>
+</tr>
+<tr>
+<td><code>ga_session_id</code></td>
+<td>Session ID</td>
+<td><code>mat_ga4_sessions</code>、<code>mat_ga4_flat_events</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="erp-與交叉分析欄位">03 ERP 與交叉分析欄位</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>欄位</th>
+<th>顯示名稱</th>
+<th>口徑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>order_code</code></td>
+<td>訂單編號</td>
+<td>Ragic 訂單主鍵</td>
+</tr>
+<tr>
+<td><code>order_date</code></td>
+<td>訂單日期</td>
+<td>ERP/Ragic 訂單日期</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>使用狀態</td>
+<td>預設 <code>LOWER(status)='toggle-on'</code></td>
+</tr>
+<tr>
+<td><code>order_amount</code></td>
+<td>訂單金額</td>
+<td>不含運費</td>
+</tr>
+<tr>
+<td><code>order_amount_with_shipping</code></td>
+<td>含運訂單實收</td>
+<td>AI 營收查詢預設</td>
+</tr>
+<tr>
+<td><code>shipping_income</code></td>
+<td>運費收入</td>
+<td>明細補充欄位</td>
+</tr>
+<tr>
+<td><code>brand_code</code></td>
+<td>品牌代碼</td>
+<td>GA4/ERP JOIN 主鍵</td>
+</tr>
+<tr>
+<td><code>brand_name</code></td>
+<td>品牌名稱</td>
+<td>Looker/Portal 顯示</td>
+</tr>
+<tr>
+<td><code>channel_code</code></td>
+<td>通路代碼</td>
+<td>通路分析</td>
+</tr>
+<tr>
+<td><code>channel_name</code></td>
+<td>通路名稱</td>
+<td>通路分析使用</td>
+</tr>
+<tr>
+<td><code>payment_code</code></td>
+<td>付款方式代碼</td>
+<td>金流分析</td>
+</tr>
+<tr>
+<td><code>payment_method</code></td>
+<td>支付方式</td>
+<td>金流分析使用</td>
+</tr>
+<tr>
+<td><code>logistics_code</code></td>
+<td>物流方式代碼</td>
+<td>物流分析</td>
+</tr>
+<tr>
+<td><code>logistics_name</code></td>
+<td>物流方式</td>
+<td>物流分析使用</td>
+</tr>
+<tr>
+<td><code>desired_delivery_timeslot</code></td>
+<td>希望配達時段</td>
+<td>配送分析</td>
+</tr>
+<tr>
+<td><code>revenue</code> / <code>revenue_sum</code></td>
+<td>營收</td>
+<td>View 依需求而定</td>
+</tr>
+<tr>
+<td><code>quantity_sum</code></td>
+<td>商品件數</td>
+<td>銷量指標</td>
+</tr>
+<tr>
+<td><code>asp</code></td>
+<td>平均商品單價</td>
+<td><code>revenue / quantity</code></td>
+</tr>
+<tr>
+<td><code>customer_code</code></td>
+<td>客戶編號</td>
+<td>客戶分析</td>
+</tr>
+<tr>
+<td><code>customer_name</code></td>
+<td>客戶名稱</td>
+<td>客戶顯示</td>
+</tr>
+<tr>
+<td><code>subtotal</code></td>
+<td>明細小計</td>
+<td>商品明細金額</td>
+</tr>
+<tr>
+<td><code>amount_paid</code></td>
+<td>實付金額</td>
+<td>明細實付</td>
+</tr>
+<tr>
+<td><code>amount_with_shipping</code></td>
+<td>含運實收</td>
+<td>明細含運</td>
+</tr>
+<tr>
+<td><code>product_code</code></td>
+<td>商品編號</td>
+<td>商品主鍵</td>
+</tr>
+<tr>
+<td><code>product_name</code></td>
+<td>商品名稱</td>
+<td>商品顯示</td>
+</tr>
+<tr>
+<td><code>product_series</code></td>
+<td>商品系列</td>
+<td>品類分析</td>
+</tr>
+<tr>
+<td><code>quantity</code></td>
+<td>數量</td>
+<td>訂購數量</td>
+</tr>
+<tr>
+<td><code>unit_price</code></td>
+<td>單價</td>
+<td>商品單價</td>
+</tr>
+</tbody>
+</table>
+<h2 id="資料表完整欄位清單">04 資料表完整欄位清單</h2>
+<h3 id="ga4-materialized-tables">GA4 materialized tables</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>表</th>
+<th>日期欄位</th>
+<th>完整欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mat_ga4_daily_traffic</code></td>
+<td><code>date</code></td>
+<td>brand_code, date, sessions, users, new_users, engaged_sessions, engaged_rate, avg_engagement_sec, purchasers, cvr</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>date</code>：STRING (YYYYMMDD)</li>
+<li><code>brand_code</code>：STRING，對應 erp_backup.brand_code</li>
+<li><code>sessions</code>：INTEGER，GA4 sessions</li>
+<li><code>users</code>：INTEGER，唯一用戶數</li>
+<li><code>new_users</code>：INTEGER，首次造訪用戶</li>
+<li><code>engaged_sessions</code>：INTEGER，參與互動的 sessions</li>
+<li><code>engaged_rate</code>：FLOAT (0-1)，engaged_sessions / sessions</li>
+<li><code>avg_engagement_sec</code>：FLOAT，平均互動秒數</li>
+<li><code>purchasers</code>：INTEGER，購買用戶數</li>
+<li><code>cvr</code>：FLOAT (0-1)，purchasers / sessions</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>mat_ga4_source_daily</code></td>
+<td><code>event_date</code></td>
+<td>brand_code, event_date, source, medium, sessions, users, first_visit_count, engaged_rate, avg_engagement_sec, purchasers, cvr</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>event_date</code>：STRING (YYYYMMDD)，AI 必用此欄位</li>
+<li><code>source</code>：STRING，流量來源 (google, facebook, email 等)</li>
+<li><code>medium</code>：STRING，流量媒介 (cpc, cpm, organic 等)</li>
+<li><code>sessions</code>：INTEGER，該來源媒介的造訪次數</li>
+<li><code>users</code>：INTEGER，唯一用戶數</li>
+<li><code>first_visit_count</code>：INTEGER，該來源的首次造訪數</li>
+<li><code>cvr</code>：FLOAT (0-1)，購買轉換率</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>mat_ga4_campaign_daily</code></td>
+<td><code>date</code></td>
+<td>brand_code, date, source, medium, campaign_name, sessions, users, new_visitors, returning_visitors, engaged_rate, avg_engagement_sec, purchasers, cvr</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>date</code>：STRING (YYYYMMDD)</li>
+<li><code>campaign_name</code>：STRING，廣告活動名稱</li>
+<li><code>new_visitors</code>：INTEGER，新訪問者數</li>
+<li><code>returning_visitors</code>：INTEGER，回訪者數</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>mat_ga4_sessions</code></td>
+<td><code>event_date</code></td>
+<td>brand_code, event_date, ga_session_id, user_pseudo_id, ga_session_number, source, medium, campaign, device_category, landing_page, session_engaged, total_engagement_time_msec, purchase_count, event_count</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>ga_session_id</code>：STRING，GA4 session ID</li>
+<li><code>user_pseudo_id</code>：STRING，匿名用戶 ID</li>
+<li><code>ga_session_number</code>：INTEGER，用戶第 N 個 session</li>
+<li><code>device_category</code>：STRING (mobile/desktop/tablet)</li>
+<li><code>landing_page</code>：STRING，着陸頁面</li>
+<li><code>session_engaged</code>：BOOLEAN/Y/N，是否為參與式 session</li>
+<li><code>total_engagement_time_msec</code>：INTEGER，總互動毫秒數</li>
+<li><code>purchase_count</code>：INTEGER，該 session 購買次數</li>
+<li><code>event_count</code>：INTEGER，session 內事件數</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>mat_ga4_ecommerce</code></td>
+<td><code>event_date</code></td>
+<td>brand_code, event_date, event_name, user_pseudo_id, transaction_id, event_value, currency, customer_type, item_id, item_name, item_brand, item_category, item_price, item_quantity, item_revenue</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>event_name</code>：STRING (purchase, add_to_cart, begin_checkout 等)</li>
+<li><code>user_pseudo_id</code>：STRING，匿名用戶 ID</li>
+<li><code>transaction_id</code>：STRING，交易 ID</li>
+<li><code>event_value</code>：NUMERIC，事件價值</li>
+<li><code>currency</code>：STRING，幣別</li>
+<li><code>customer_type</code>：STRING，用戶類型</li>
+<li><code>item_id</code>：STRING，商品 ID</li>
+<li><code>item_name</code>：STRING，商品名稱</li>
+<li><code>item_brand</code>：STRING，商品品牌</li>
+<li><code>item_category</code>：STRING，商品類別</li>
+<li><code>item_price</code>：NUMERIC，商品價格</li>
+<li><code>item_quantity</code>：INTEGER，商品數量</li>
+<li><code>item_revenue</code>：NUMERIC，商品收入</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>mat_ga4_flat_events</code></td>
+<td><code>event_date</code></td>
+<td>brand_code, event_date, event_timestamp, event_name, user_pseudo_id, stream_id, platform, device_category, device_os, geo_country, geo_city, traffic_source, traffic_medium, traffic_campaign, utm_campaign, ga_session_id, ga_session_number, session_engaged, engagement_time_msec, page_location, page_title, event_value, currency, transaction_id, customer_type</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>event_timestamp</code>：INTEGER (微秒級)，BigQuery 內部為微秒需除 1000000</li>
+<li><code>page_location</code>：STRING，事件發生頁面 URL</li>
+<li><code>stream_id</code>：STRING，資料流 ID</li>
+<li><code>platform</code>：STRING，平台 (web/android/ios)</li>
+<li><code>device_category</code>：STRING (mobile/desktop/tablet)</li>
+<li><code>device_os</code>：STRING，作業系統</li>
+<li><code>geo_country</code>：STRING，國家</li>
+<li><code>geo_city</code>：STRING，城市</li>
+<li><code>traffic_source</code>：STRING，流量來源</li>
+<li><code>traffic_medium</code>：STRING，流量媒介</li>
+<li><code>traffic_campaign</code>：STRING，流量活動</li>
+<li><code>utm_campaign</code>：STRING，UTM 活動</li>
+<li><code>ga_session_number</code>：INTEGER，用戶第 N 個 session</li>
+<li><code>session_engaged</code>：STRING，是否參與</li>
+<li><code>engagement_time_msec</code>：INTEGER，互動毫秒數</li>
+<li><code>page_title</code>：STRING，頁面標題</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="erp-核心-view">ERP 核心 View</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>表</th>
+<th>用途</th>
+<th>完整欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>view_order_customer</code></td>
+<td>訂單客戶檢視</td>
+<td>ragic_id, order_code, order_date, order_amount, status, backup_time, cleaning_status, customer_code, order_amount_with_shipping</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>order_date</code>：DATE，訂單日期 (YYYY-MM-DD)</li>
+<li><code>status</code>：STRING，訂單狀態 ('toggle-on' = 有效訂單)</li>
+<li><code>order_amount</code>：NUMERIC，不含運費金額</li>
+<li><code>order_amount_with_shipping</code>：NUMERIC，含運費總金額</li>
+<li><code>backup_time</code>：TIMESTAMP，備份時間</li>
+<li><code>cleaning_status</code>：STRING，清洗狀態</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>ls_v_orders_ext</code></td>
+<td>訂單擴展檢視</td>
+<td>order_code, order_date, customer_code, customer_name, brand_code, brand_name, order_amount, order_amount_with_shipping, status, postal_code, city, district, platform_order_no, invoice_flag, order_created_at</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>postal_code</code>：STRING，郵遞區號</li>
+<li><code>city</code>：STRING，城市</li>
+<li><code>district</code>：STRING，地區</li>
+<li><code>platform_order_no</code>：STRING，平台訂單號</li>
+<li><code>invoice_flag</code>：STRING，發票狀態</li>
+<li><code>order_created_at</code>：TIMESTAMP，訂單建立時間</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>ls_v_order_lines</code></td>
+<td>訂單明細檢視</td>
+<td>order_code, order_date, customer_code, customer_name, product_code, product_name, brand_code, brand_name, product_series, product_structure, quantity, unit_price, subtotal, order_amount, line_created_at, order_created_at</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>quantity</code>：INTEGER，訂購數量</li>
+<li><code>unit_price</code>：NUMERIC，單價</li>
+<li><code>subtotal</code>：NUMERIC，明細小計</li>
+<li><code>product_series</code>：STRING，商品系列</li>
+<li><code>product_structure</code>：STRING，商品結構</li>
+<li><code>line_created_at</code>：TIMESTAMP，明細建立時間</li>
+<li><code>order_created_at</code>：TIMESTAMP，訂單建立時間</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>ls_v_order_lines_ext</code></td>
+<td>明細擴展檢視</td>
+<td>order_code, order_date, customer_code, customer_name, product_code, product_name, brand_code, brand_name, product_series, product_structure, quantity, unit_price, subtotal, order_amount, status, channel_code, channel_name, payment_method, payment_code, payment_name, logistics_code, logistics_name, logistics_vendor, logistics_temp_layer, shipping_income, amount_paid, amount_with_shipping, cod_flag, desired_delivery_timeslot, channel_campaign_no1, channel_campaign_no2, channel_campaign_no3, channel_campaign_no4, channel_campaign_no5, line_created_at, order_created_at</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>quantity</code>：INTEGER，訂購數量</li>
+<li><code>unit_price</code>：NUMERIC，單價</li>
+<li><code>subtotal</code>：NUMERIC，明細小計</li>
+<li><code>amount_paid</code>：NUMERIC，實付金額</li>
+<li><code>amount_with_shipping</code>：NUMERIC，含運實收</li>
+<li><code>shipping_income</code>：NUMERIC，運費收入</li>
+<li><code>logistics_vendor</code>：STRING，物流商</li>
+<li><code>logistics_temp_layer</code>：STRING，物流溫層</li>
+<li><code>cod_flag</code>：BOOLEAN，貨到付款標記</li>
+<li><code>channel_campaign_no1-5</code>：STRING，通路活動編號</li>
+<li><code>line_created_at</code>：TIMESTAMP，明細建立時間</li>
+<li><code>order_created_at</code>：TIMESTAMP，訂單建立時間</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>erp_daily_sales</code></td>
+<td>每日品牌彙總</td>
+<td>brand_code, date, revenue, orders, customers, aov, new_customers</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>revenue</code>：NUMERIC，含運營收總額</li>
+<li><code>orders</code>：INTEGER，訂單數</li>
+<li><code>customers</code>：INTEGER，客戶數</li>
+<li><code>aov</code>：NUMERIC，平均訂單金額 (revenue / orders)</li>
+<li><code>new_customers</code>：INTEGER，新客戶數</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>ls_p3_rfm</code></td>
+<td>客戶 RFM 分析</td>
+<td>brand_code, brand_name, customer_code, customer_name, first_order_date, last_order_date, recency_days, frequency, monetary, avg_order_value</td>
+</tr>
+<tr>
+<td colspan="3" class="field-detail">
+<div class="field-specs"><strong>欄位格式：</strong></div>
+<ul class="field-list">
+<li><code>recency_days</code>：INTEGER，最近購買天數</li>
+<li><code>frequency</code>：INTEGER，購買次數</li>
+<li><code>monetary</code>：NUMERIC，總消費金額</li>
+<li><code>avg_order_value</code>：NUMERIC，平均訂單金額</li>
+<li><code>first_order_date</code>：DATE，首次訂單日期</li>
+<li><code>last_order_date</code>：DATE，最後訂單日期</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ga4-erp-交叉分析-view">GA4-ERP 交叉分析 View</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>表</th>
+<th>用途</th>
+<th>完整欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vw_ls_ga4_source_sales_daily</code></td>
+<td>GA4 source/medium + ERP 營收</td>
+<td>brand_code, brand_name, date, source, medium, sessions, users, first_visit_count, engaged_rate, avg_engagement_sec, cvr, revenue, orders, aov, revenue_per_session</td>
+</tr>
+</tbody>
+</table>
+<h3>事實表</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>表</th>
+<th>用途</th>
+<th>完整欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fact_orders</code></td>
+<td>訂單事實表</td>
+<td>ragic_id, order_code, customer_code, order_date, order_amount, status, platform_order_no, invoice_flag, ragic_created, ragic_modified</td>
+</tr>
+<tr>
+<td><code>fact_order_details</code></td>
+<td>訂單明細事實表</td>
+<td>ragic_id, order_code, product_code, quantity, unit_price, subtotal, channel_code, channel_name, payment_code, payment_method, logistics_code, logistics_name, shipping_income, amount_paid, amount_with_shipping, cod_flag, desired_delivery_timeslot, channel_campaign_no1-5</td>
+</tr>
+</tbody>
+</table>
+<h3>商品維度表</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>表</th>
+<th>用途</th>
+<th>完整欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dim_brand</code></td>
+<td>品牌維度</td>
+<td>ragic_id, brand_code, brand_name, status, is_active</td>
+</tr>
+<tr>
+<td><code>dim_product</code></td>
+<td>商品維度</td>
+<td>ragic_id, product_code, product_name, price, status, product_series, brand_code</td>
+</tr>
+<tr>
+<td><code>dim_campaign</code></td>
+<td>活動維度</td>
+<td>ragic_id, campaign_code, campaign_name, start_date, end_date, status</td>
+</tr>
+<tr>
+<td><code>dim_customer</code></td>
+<td>客戶維度</td>
+<td>ragic_id, customer_code, customer_name, phone, email, status</td>
+</tr>
+<tr>
+<td><code>dim_brand_ga4_mapping</code></td>
+<td>品牌 GA4 對應</td>
+<td>brand_code, brand_name, ga4_dataset, website</td>
+</tr>
+<tr>
+<td><code>dim_channel</code></td>
+<td>通路維度</td>
+<td>ragic_id, channel_code, channel_name, status</td>
+</tr>
+<tr>
+<td><code>dim_payment</code></td>
+<td>付款維度</td>
+<td>ragic_id, payment_code, payment_name, status</td>
+</tr>
+<tr>
+<td><code>dim_logistics</code></td>
+<td>物流維度</td>
+<td>ragic_id, logistics_code, logistics_name, status</td>
+</tr>
+<tr>
+<td><code>dim_postal</code></td>
+<td>郵遞區號維度</td>
+<td>ragic_id, zipcode, city, district, status</td>
+</tr>
+</tbody>
+</table>
+<h2 id="日期欄位規則">05 日期欄位規則</h2>
+<table class="compare">
+<thead>
+<tr>
+<th>表/View</th>
+<th>日期欄位</th>
+<th>注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mat_ga4_daily_traffic</code></td>
+<td><code>date</code></td>
+<td>GA4 daily traffic</td>
+</tr>
+<tr>
+<td><code>mat_ga4_source_daily</code></td>
+<td><code>event_date</code></td>
+<td>AI 禁止用 <code>date</code></td>
+</tr>
+<tr>
+<td><code>erp_daily_sales</code></td>
+<td><code>date</code></td>
+<td>ERP 每日彙總</td>
+</tr>
+<tr>
+<td><code>vw_ls_ga4_*</code></td>
+<td><code>date</code>/<code>month</code></td>
+<td>語意化日期</td>
+</tr>
+</tbody>
+</table>
+<h3>系統內部表格</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>表格</th>
+<th>用途</th>
+<th>完整欄位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backup_logs</code></td>
+<td>備份執行紀錄</td>
+<td>id, backup_date, backup_time, sheet_code, sheet_name, records_fetched, records_inserted, records_updated, records_filtered, status, error_message, duration_seconds, created_at</td>
+</tr>
+<tr>
+<td><code>fill_results</code></td>
+<td>自動填值結果</td>
+<td>table_code, record_id, field_name, rule_id, before_value, after_value, status, batch_id, fixed_at</td>
+</tr>
+<tr>
+<td><code>cleaning_rules</code></td>
+<td>清洗規則定義</td>
+<td>id, name, type, category, tables, field, trigger_condition, fix_logic, auto_fixable, severity, priority, enabled, version, created_at, updated_at</td>
+</tr>
+<tr>
+<td><code>cleaning_issues</code></td>
+<td>清洗問題紀錄</td>
+<td>issue_id, record_id, table_code, rule_id, rule_type, field_name, original_value, issue_description, severity, status, fixed_value, fixed_by, fixed_at, ai_suggestion, ai_confidence, ai_reasoning, created_at, updated_at</td>
+</tr>
+<tr>
+<td><code>cleaning_results</code></td>
+<td>清洗執行結果</td>
+<td>record_id, table_code, status, original_values, fixed_values, violation_count, ai_suggestion, confidence_score, cleaned_at, cleaned_by, cleaning_version, created_at, updated_at</td>
+</tr>
+</tbody>
+</table>
+<h3>報表 Views（選用）</h3>
+<table class="compare">
+<thead>
+<tr>
+<th>類別</th>
+<th>Views</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>品牌/營收</td>
+<td><code>ls_v_02_top_10_brands_yesterday</code>、<code>ls_v_03_monthly_revenue_accumulation</code>、<code>ls_p1_2_brand_revenue_share</code></td>
+</tr>
+<tr>
+<td>商品/數量</td>
+<td><code>ls_p1_1_daily_product_quantity</code>、<code>ls_p1_5_top20_products_by_qty</code>、<code>ls_p1_9_monthly_asp</code></td>
+</tr>
+<tr>
+<td>跨通路</td>
+<td><code>ls_v_04_omnichannel_roas_overview</code>、<code>ls_v_05_channel_contribution_trend</code></td>
+</tr>
+<tr>
+<td>POC/Daily</td>
+<td><code>ls_v_01_daily_revenue_poc</code>、<code>ls_v_01_today_revenue_achievement</code>、<code>ls_u_*</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="ai-查詢限制">06 AI 查詢限制</h2>
+<ul>
+<li>GA4 source/medium 必用 <code>mat_ga4_source_daily.event_date</code></li>
+<li>ERP 品牌查詢用 <code>view_order_customer</code> 或 <code>erp_daily_sales</code></li>
+<li>營收預設含運，使用 <code>order_amount_with_shipping</code></li>
+<li>GA4-ERP 交叉分析 View：
+<ul>
+<li><code>vw_ls_ga4_source_sales_daily</code>：GA4 source/medium + ERP 營收</li>
+</ul>
+</li>
+</ul>
+
+  </main>
+
+  <footer>
+    <span>欄位對照 · 2026-05-16</span>
+    <span>參考：<a href="https://thariqs.github.io/html-effectiveness/">The Unreasonable Effectiveness of HTML</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RagicEDP 技術文件總目錄</title>
+<link rel="stylesheet" href="templates/style.css">
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">專案文件 · 技術文件</div>
+    <h1>RagicEDP 技術文件總目錄</h1>
+    <p class="subtitle">technical_docs_20260516/ | 2026-05-16 更新</p>
+  </header>
+
+  <!-- TOC -->
+  <nav class="toc">
+    <a href="#文件列表" class="toc-link">文件列表</a>
+    <a href="#快速索引" class="toc-link">快速索引</a>
+    <a href="#維護注意" class="toc-link">維護注意</a>
+  </nav>
+
+  <main>
+    <h2 id="文件列表">技術文件列表</h2>
+    <pre><code>technical_docs_20260516/
+├── README.md                    # 專案說明
+├── architecture/              # 系統架構
+│   └── overview.md              # 技術棧、資料流程、部署
+├── data/                      # 資料層
+│   ├── bigquery_architecture.md # Medallion 架構、星狀模型、80 個 View
+│   └── field_mapping.md         # GA4/ERP 欄位對照、口徑
+├── analytics/                 # 分析層
+│   └── looker_studio.md         # Looker 80 個圖表 + 自動化腳本
+├── ai/                        # AI 專家
+│   └── expert_details.md        # SQL 規則、fallback
+└── html/                      # HTML 易讀版
+    ├── index.html               # 本檔案
+    ├── architecture_overview.html
+    ├── data_field_mapping.html
+    ├── data_bigquery_architecture.html
+    ├── analytics_looker_studio.html
+    └── ai_expert_details.html</code></pre>
+
+    <h2 id="快速索引">快速索引</h2>
+    <table class="compare">
+      <thead>
+        <tr>
+          <th>類別</th>
+          <th>文件</th>
+          <th>說明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>系統架構</td>
+          <td><a href="architecture_overview.html"><code>architecture_overview.html</code></a></td>
+          <td>Next.js 15 + Cloud Run + BigQuery，資料流程：Ragic→CF→BQ，GA4→Materialized Tables</td>
+        </tr>
+        <tr>
+          <td>資料欄位</td>
+          <td><a href="data_field_mapping.html"><code>data_field_mapping.html</code></a></td>
+          <td>GA4 mat_ga4_*、ERP View、brand_code JOIN、品牌/通路/物流欄位、status=toggle-on</td>
+        </tr>
+        <tr>
+          <td>Looker Studio</td>
+          <td><a href="analytics_looker_studio.html"><code>analytics_looker_studio.html</code></a></td>
+          <td>5 Pages × 20 圖表、View ls_p1_*、ls_v_*、客製化腳本 build_*.py</td>
+        </tr>
+        <tr>
+          <td>Portal 分析報表</td>
+          <td><a href="analytics_portal.html"><code>analytics_portal.html</code></a></td>
+          <td>ERP 53 張 + GA4 22 張圖表，View ls_v_*、v_customer_*、vw_ls_ga4_*</td>
+        </tr>
+        <tr>
+          <td>AI 專家</td>
+          <td><a href="ai_expert_details.html"><code>ai_expert_details.html</code></a></td>
+          <td>Vertex AI、SQL Deterministic Fallback、conversational context 繼承</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>BigQuery 資料表關聯圖</h2>
+    <p style="margin-bottom: 8px"><a href="bq-standalone.html"><code>bq-standalone.html</code></a> - 互動式資料表關聯圖，支援節點搜尋、詳情檢視。</p>
+
+    <h2 id="維護注意">維護注意</h2>
+    <ul>
+      <li>文件內容以目前工作樹為準</li>
+      <li>GA4 與 ERP 交叉分析以 <code>brand_code</code> 作為 JOIN 主鍵</li>
+      <li>營收查詢預設排除 <code>toggle-off</code></li>
+    </ul>
+
+  </main>
+
+  <footer>
+    <span>技術文件總目錄 · 2026-05-16</span>
+  </footer>
+
+</div>
+</body>
+</html>
