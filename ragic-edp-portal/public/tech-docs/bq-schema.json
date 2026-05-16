@@ -186,7 +186,39 @@
       "name": "GA4每日流量",
       "type": "ga4",
       "description": "GA4 流量快取",
-      "fields": ["date", "sessions", "users", "pageviews", "brand"]
+      "fields": ["brand_code", "date", "sessions", "users", "new_users", "engaged_sessions", "engaged_rate", "avg_engagement_sec", "purchasers", "cvr"]
+    },
+    {
+      "id": "mat_ga4_flat_events",
+      "label": "mat_ga4_flat_events",
+      "name": "GA4事件快取",
+      "type": "ga4",
+      "description": "GA4 打平事件快取",
+      "fields": ["brand_code", "event_date", "event_name", "user_pseudo_id", "ga_session_id", "page_location", "engagement_time_msec"]
+    },
+    {
+      "id": "mat_ga4_source_daily",
+      "label": "mat_ga4_source_daily",
+      "name": "GA4來源日彙總",
+      "type": "ga4",
+      "description": "GA4 來源×日流量聚合",
+      "fields": ["brand_code", "date", "source", "medium", "sessions", "users", "first_visit_count", "engaged_rate", "avg_engagement_sec", "cvr"]
+    },
+    {
+      "id": "mat_ga4_campaign_daily",
+      "label": "mat_ga4_campaign_daily",
+      "name": "GA4活動日彙總",
+      "type": "ga4",
+      "description": "GA4 活動×日流量聚合",
+      "fields": ["brand_code", "date", "source", "medium", "campaign_name", "sessions", "users", "new_visitors", "returning_visitors", "engaged_rate", "avg_engagement_sec", "cvr"]
+    },
+    {
+      "id": "mat_ga4_ecommerce",
+      "label": "mat_ga4_ecommerce",
+      "name": "GA4電商快取",
+      "type": "ga4",
+      "description": "GA4 電商事件與商品快取",
+      "fields": ["brand_code", "event_date", "event_name", "item_name", "item_id", "item_price", "item_quantity", "item_revenue"]
     },
     {
       "id": "dim_brand_ga4_mapping",
@@ -202,7 +234,79 @@
       "name": "GA4 x ERP 流量營收",
       "type": "view",
       "description": "GA4 數據與 ERP 銷售數據的聯合分析",
-      "fields": ["date", "sessions", "revenue", "roas"]
+      "fields": ["brand_code", "date", "sessions", "users", "revenue", "orders", "aov", "roas"]
+    },
+    {
+      "id": "vw_ls_ga4_cart_vs_order_daily",
+      "label": "GA4 購物車 vs 訂單",
+      "name": "GA4 購物車 vs 訂單",
+      "type": "view",
+      "description": "購物車加觸發 vs 實際訂單對比",
+      "fields": ["brand_code", "date", "add_to_cart_count", "begin_checkout_count", "order_count"]
+    },
+    {
+      "id": "vw_ls_ga4_source_sales_daily",
+      "label": "GA4 來源銷售",
+      "name": "GA4 來源銷售",
+      "type": "view",
+      "description": "GA4 來源×日流量與ERP銷售聯合",
+      "fields": ["brand_code", "date", "source", "medium", "sessions", "users", "revenue", "revenue_per_session"]
+    },
+    {
+      "id": "vw_ls_ga4_campaign_sales_daily",
+      "label": "GA4 活動銷售",
+      "name": "GA4 活動銷售",
+      "type": "view",
+      "description": "GA4 活動×日流量與ERP銷售聯合",
+      "fields": ["brand_code", "date", "source", "medium", "campaign_name", "sessions", "revenue", "orders"]
+    },
+    {
+      "id": "vw_ls_ga4_item_attention_vs_sales",
+      "label": "GA4 商品注意 vs 銷量",
+      "name": "GA4 商品注意 vs 銷量",
+      "type": "view",
+      "description": "商品頁瀏覽 vs 實際銷售對比",
+      "fields": ["brand_code", "date", "item_name", "view_count", "sold_quantity"]
+    },
+    {
+      "id": "vw_ls_ga4_source_sales_summary",
+      "label": "GA4 來源銷售總表",
+      "name": "GA4 來源銷售總表",
+      "type": "view",
+      "description": "GA4 來源×銷售彙總",
+      "fields": ["brand_code", "source", "medium", "sessions", "revenue", "orders", "aov", "revenue_per_session"]
+    },
+    {
+      "id": "vw_ls_ga4_paid_organic_monthly",
+      "label": "GA4 付費 vs 自然",
+      "name": "GA4 付費 vs 自然",
+      "type": "view",
+      "description": "付費 vs 自然月彙總",
+      "fields": ["brand_code", "month", "paid_sessions", "organic_sessions", "revenue"]
+    },
+    {
+      "id": "vw_ls_ga4_marketing_efficiency_monthly",
+      "label": "GA4 行銷效率",
+      "name": "GA4 行銷效率",
+      "type": "view",
+      "description": "GA4 行銷效率月彙總",
+      "fields": ["brand_code", "month", "sessions", "revenue", "orders", "cvr", "aov"]
+    },
+    {
+      "id": "vw_ls_ga4_23_google_ads_efficiency_daily",
+      "label": "GA4 Google Ads",
+      "name": "GA4 Google Ads",
+      "type": "view",
+      "description": "Google Ads 效率日報",
+      "fields": ["brand_code", "date", "source", "medium", "sessions", "revenue"]
+    },
+    {
+      "id": "vw_ls_ga4_24_facebook_ads_efficiency_daily",
+      "label": "GA4 Facebook Ads",
+      "name": "GA4 Facebook Ads",
+      "type": "view",
+      "description": "Facebook Ads 效率日報",
+      "fields": ["brand_code", "date", "sessions", "fb_paid_sessions", "paidmedia_sessions", "revenue"]
     }
   ],
   "edges": [
@@ -233,7 +337,17 @@
     {"id": "e17", "source": "erp_daily_sales", "target": "sheet_20_channel", "key": "channel_code", "description": "ERP銷售對通路"},
     {"id": "e18", "source": "erp_daily_sales", "target": "sheet_30_payment", "key": "payment_code", "description": "ERP銷售對金流"},
     {"id": "e19", "source": "vw_ls_ga4_traffic_sales_daily", "target": "mat_ga4_daily_traffic", "key": "date", "description": "GA4-ERP對GA4流量"},
+    {"id": "e19a", "source": "vw_ls_ga4_traffic_sales_daily", "target": "dim_brand_ga4_mapping", "key": "brand_code", "description": "GA4-ERP對品牌映射"},
     {"id": "e20", "source": "vw_ls_ga4_traffic_sales_daily", "target": "erp_daily_sales", "key": "date", "description": "GA4-ERP對ERP銷售"},
+    {"id": "e20a", "source": "vw_ls_ga4_cart_vs_order_daily", "target": "mat_ga4_flat_events", "key": "brand_code", "description": "GA4購物車對事件快取"},
+    {"id": "e21a", "source": "mat_ga4_daily_traffic", "target": "dim_brand_ga4_mapping", "key": "brand_code", "description": "GA4流量對品牌映射"},
+    {"id": "e21b", "source": "mat_ga4_flat_events", "target": "dim_brand_ga4_mapping", "key": "brand_code", "description": "GA4事件對品牌映射"},
+    {"id": "e21c", "source": "mat_ga4_source_daily", "target": "dim_brand_ga4_mapping", "key": "brand_code", "description": "GA4來源對品牌映射"},
+    {"id": "e21d", "source": "mat_ga4_campaign_daily", "target": "dim_brand_ga4_mapping", "key": "brand_code", "description": "GA4活動對品牌映射"},
+    {"id": "e21e", "source": "mat_ga4_ecommerce", "target": "dim_brand_ga4_mapping", "key": "brand_code", "description": "GA4電商對品牌映射"},
+    {"id": "e22a", "source": "vw_ls_ga4_source_sales_daily", "target": "mat_ga4_source_daily", "key": "brand_code", "description": "GA4來源銷售對來源快取"},
+    {"id": "e22b", "source": "vw_ls_ga4_campaign_sales_daily", "target": "mat_ga4_campaign_daily", "key": "brand_code", "description": "GA4活動銷售對活動快取"},
+    {"id": "e22c", "source": "vw_ls_ga4_item_attention_vs_sales", "target": "mat_ga4_ecommerce", "key": "brand_code", "description": "GA4商品注意對電商快取"},
     {"id": "e21", "source": "dim_brand", "target": "sheet_10_brand", "key": "ragic_id", "description": "品牌維度對原始品牌"},
     {"id": "e22", "source": "dim_channel", "target": "sheet_20_channel", "key": "ragic_id", "description": "通路維度對原始通路"},
     {"id": "e23", "source": "dim_payment", "target": "sheet_30_payment", "key": "ragic_id", "description": "金流維度對原始金流"},
@@ -256,7 +370,7 @@
       "label": "GA4 交叉分析",
       "category": "analysis",
       "summary": "GA4 數據與 ERP 銷售數據的聯合分析，包含流量營收與投資回報",
-      "focus": ["mat_ga4_daily_traffic", "erp_daily_sales", "vw_ls_ga4_traffic_sales_daily"]
+      "focus": ["mat_ga4_daily_traffic", "mat_ga4_flat_events", "mat_ga4_source_daily", "mat_ga4_campaign_daily", "mat_ga4_ecommerce", "erp_daily_sales", "vw_ls_ga4_traffic_sales_daily", "vw_ls_ga4_source_sales_daily", "vw_ls_ga4_campaign_sales_daily", "vw_ls_ga4_item_attention_vs_sales"]
     },
     {
       "id": "etl-pipeline",

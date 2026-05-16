@@ -16,27 +16,24 @@
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: var(--bg-primary); color: var(--text-primary); height: 100vh; overflow: hidden; }
         .container { display: flex; flex-direction: column; height: 100vh; }
         header { padding: 16px 20px; background: linear-gradient(135deg, #1a1f29 0%, #0d1117 100%); border-bottom: 1px solid var(--border-color); }
-        header h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-        header .desc { font-size: 13px; color: var(--text-secondary); }
+        header h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+        header .desc { font-size: 17px; color: var(--text-secondary); }
         .tabs { display: flex; gap: 8px; margin-top: 12px; }
-        .tab-btn { padding: 6px 16px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .tab-btn { padding: 6px 16px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 17px; }
         .tab-btn.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
         .main { display: flex; flex: 1; overflow: hidden; }
         .sidebar { width: 300px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
         .search-box { padding: 12px; border-bottom: 1px solid var(--border-color); }
-        .search-box input { width: 100%; padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; font-size: 13px; }
-        .node-filter { padding: 8px 12px; border-bottom: 1px solid var(--border-color); display: flex; flex-wrap: wrap; gap: 6px; }
-        .filter-btn { padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--text-secondary); }
-        .filter-btn.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+        .search-box input { width: 100%; padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; font-size: 22px; }
         .item-list { flex: 1; overflow-y: auto; padding: 12px; }
-        .item { padding: 10px 14px; margin: 4px 0; background: var(--bg-tertiary); border-radius: 6px; cursor: pointer; font-size: 13px; border-left: 3px solid transparent; }
+        .item { padding: 10px 14px; margin: 4px 0; background: var(--bg-tertiary); border-radius: 6px; cursor: pointer; font-size: 22px; border-left: 3px solid transparent; }
         .item:hover, .item.active { background: var(--highlight-green); border-left-color: var(--accent-green); }
         .graph-container { flex: 1; position: relative; }
         #cy { width: 100%; height: 100%; }
         .detail-panel { width: 340px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; }
-        .panel-header { padding: 12px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 14px; }
-        .panel-content { flex: 1; padding: 16px; overflow-y: auto; font-size: 13px; line-height: 1.6; }
-        .legend { padding: 10px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border-color); font-size: 12px; display: flex; gap: 16px; }
+        .panel-header { padding: 12px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 22px; }
+        .panel-content { flex: 1; padding: 16px; overflow-y: auto; font-size: 17px; line-height: 1.6; }
+        .legend { padding: 10px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border-color); font-size: 16px; display: flex; gap: 16px; }
         .legend-item { display: flex; align-items: center; gap: 6px; }
         .legend-color { width: 16px; height: 16px; border-radius: 3px; }
         .legend-raw { background: #6e7681; }
@@ -60,13 +57,6 @@
         <div class="main">
             <div class="sidebar">
                 <div class="search-box"><input type="text" id="search-input" placeholder="搜尋資料表或視圖..."></div>
-                <div class="node-filter" id="node-filter">
-                    <button class="filter-btn active" data-type="all">全部</button>
-                    <button class="filter-btn" data-type="raw">Raw</button>
-                    <button class="filter-btn" data-type="cleaned">Cleaned</button>
-                    <button class="filter-btn" data-type="view">View</button>
-                    <button class="filter-btn" data-type="ga4">GA4</button>
-                </div>
                 <div class="item-list" id="item-list"></div>
             </div>
             <div class="graph-container"><div id="cy"></div></div>
@@ -90,7 +80,6 @@
             this.cy = null;
             this.currentDataset = 'bq';
             this.graphData = null;
-            this.currentFilter = 'all';
             this.init();
         }
 
@@ -115,13 +104,13 @@
                 container: document.getElementById('cy'),
                 elements: elements,
                 style: [
-                    { selector: 'node', style: { 'background-color': '#121720', 'border-color': '#2a3342', 'border-width': 2, 'label': 'data(label)', 'color': '#eef3ef', 'font-size': 11, 'text-wrap': 'wrap', 'text-max-width': 100, 'width': 80, 'height': 40, 'padding': '8px' }},
+                    { selector: 'node', style: { 'background-color': '#121720', 'border-color': '#2a3342', 'border-width': 2, 'label': 'data(label)', 'color': '#eef3ef', 'font-size': 15, 'text-wrap': 'wrap', 'text-max-width': 100, 'width': 80, 'height': 40, 'padding': '8px' }},
                     { selector: 'node.raw', style: { 'background-color': '#6e7681' }},
                     { selector: 'node.cleaned', style: { 'background-color': '#0969da' }},
                     { selector: 'node.ga4', style: { 'background-color': '#8957e5' }},
                     { selector: 'node.view', style: { 'background-color': '#bc8cff' }},
                     { selector: '.highlight', style: { 'opacity': 1, 'border-color': '#78d67e', 'border-width': 3 }},
-                    { selector: 'edge', style: { 'line-color': '#2a3342', 'target-arrow-color': '#2a3342', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'width': 2 }},
+                    { selector: 'edge', style: { 'line-color': '#5a6370', 'target-arrow-color': '#5a6370', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'width': 4 }},
                     { selector: '.selected-edge', style: { 'line-color': '#d5c94b', 'width': 3 }}
                 ],
                 layout: { name: 'cose', animate: false }
@@ -134,7 +123,7 @@
             if (this.currentDataset === 'bq') {
                 return [
                     ...this.graphData.nodes.map(n => ({ data: n, classes: n.type })),
-                    ...this.graphData.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target }, classes: e.type }))
+                    ...this.graphData.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target, key: e.key, description: e.description }, classes: e.type }))
                 ];
             }
             return [];
@@ -175,16 +164,7 @@
         bindEvents() {
             const self = this;
 
-            // 節點類型過濾
-            document.getElementById('node-filter').addEventListener('click', function(e) {
-                if (e.target.classList.contains('filter-btn')) {
-                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
-                    self.currentFilter = e.target.dataset.type;
-                    self.applyNodeFilter();
-                }
-            });
-
+            
             document.getElementById('item-list').addEventListener('click', function(e) {
                 const itemEl = e.target.closest('.item');
                 if (itemEl) {
@@ -202,22 +182,7 @@
             });
         }
 
-        applyNodeFilter() {
-            if (this.currentFilter === 'all') {
-                this.cy.elements().removeClass('dim');
-            } else {
-                this.cy.elements().addClass('dim');
-                this.cy.nodes(`[type = "${this.currentFilter}"]`).removeClass('dim');
-                this.cy.edges().forEach(edge => {
-                    const source = edge.source();
-                    const target = edge.target();
-                    if (source.classList.includes(this.currentFilter) || target.classList.includes(this.currentFilter)) {
-                        edge.removeClass('dim');
-                    }
-                });
-            }
-        }
-
+        
         focusNodes(nodeIds) {
             this.cy.elements().removeClass('highlight related dim selected-edge');
             const self = this;
@@ -263,13 +228,17 @@
             edge.addClass('highlight');
         }
 
-        showEdgeDetail(edge) {
-            const edgeInfo = this.graphData.edges?.find(e => e.id === edge.id);
-            const description = edgeInfo?.description || '';
+        showEdgeDetail(edgeData) {
+            const sourceNode = this.graphData.nodes?.find(n => n.id === edgeData.source);
+            const targetNode = this.graphData.nodes?.find(n => n.id === edgeData.target);
+            const sourceName = sourceNode?.name || sourceNode?.label || edgeData.source;
+            const targetName = targetNode?.name || targetNode?.label || edgeData.target;
+            const description = edgeData.description || '';
             document.getElementById('detail-content').innerHTML = `
                 <p><strong>關聯鍵</strong></p>
-                <p>從: ${edge.source} → 到: ${edge.target}</p>
-                <p>鍵值: ${edge.key}</p>
+                <p>從: ${sourceName}</p>
+                <p>到: ${targetName}</p>
+                <p><strong>鍵值:</strong> ${edgeData.key}</p>
                 ${description ? `<p><strong>說明:</strong> ${description}</p>` : ''}
             `;
         }
@@ -291,7 +260,7 @@
             const listEl = document.getElementById('item-list');
             if (this.currentDataset === 'bq') {
                 listEl.innerHTML = this.graphData.items?.map(i =>
-                    `<div class="item" data-id="${i.id}"><strong>${i.label}</strong><br><span style="color:var(--text-secondary);font-size:11px;">${i.summary || ''}</span></div>`
+                    `<div class="item" data-id="${i.id}"><strong>${i.label}</strong><br><span style="color:var(--text-secondary);font-size:17px;">${i.summary || ''}</span></div>`
                 ).join('') || '';
             }
         }
