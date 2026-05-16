@@ -1,0 +1,304 @@
+{
+  "meta": {
+    "title": "BigQuery 完整資料表關聯圖",
+    "version": "2026-05-16"
+  },
+  "nodes": [
+    {
+      "id": "fact_orders",
+      "label": "fact_orders",
+      "name": "訂單事實表",
+      "type": "cleaned",
+      "description": "訂單層級指標中心，適合看訂單數、訂單金額、AOV",
+      "fields": ["order_code", "customer_code", "brand_code", "channel_code", "payment_code", "logistics_code", "campaign_code", "order_amount", "order_amount_with_shipping", "order_date", "status"]
+    },
+    {
+      "id": "fact_order_details",
+      "label": "fact_order_details",
+      "name": "訂單明細事實表",
+      "type": "cleaned",
+      "description": "商品明細層級中心，適合看銷量、商品結構、品牌貢獻",
+      "fields": ["ragic_id", "order_code", "product_code", "channel_code", "payment_code", "logistics_code", "channel_campaign_no1", "quantity", "subtotal"]
+    },
+    {
+      "id": "dim_brand",
+      "label": "dim_brand",
+      "name": "品牌維度表",
+      "type": "cleaned",
+      "description": "品牌 lookup",
+      "fields": ["brand_code", "brand_name", "brand_description"]
+    },
+    {
+      "id": "dim_channel",
+      "label": "dim_channel",
+      "name": "通路維度表",
+      "type": "cleaned",
+      "description": "通路 lookup",
+      "fields": ["channel_code", "channel_name"]
+    },
+    {
+      "id": "dim_payment",
+      "label": "dim_payment",
+      "name": "金流維度表",
+      "type": "cleaned",
+      "description": "金流 lookup",
+      "fields": ["payment_code", "payment_name"]
+    },
+    {
+      "id": "dim_logistics",
+      "label": "dim_logistics",
+      "name": "物流維度表",
+      "type": "cleaned",
+      "description": "物流 lookup",
+      "fields": ["logistics_code", "logistics_name"]
+    },
+    {
+      "id": "dim_postal",
+      "label": "dim_postal",
+      "name": "郵遞區號維度表",
+      "type": "cleaned",
+      "description": "地理 lookup",
+      "fields": ["zipcode", "city", "district"]
+    },
+    {
+      "id": "dim_customer",
+      "label": "dim_customer",
+      "name": "客戶維度表",
+      "type": "cleaned",
+      "description": "客戶 lookup",
+      "fields": ["customer_code", "customer_name", "customer_phone", "customer_email"]
+    },
+    {
+      "id": "dim_product",
+      "label": "dim_product",
+      "name": "商品維度表",
+      "type": "cleaned",
+      "description": "商品 lookup",
+      "fields": ["product_code", "product_name", "brand_code", "product_category"]
+    },
+    {
+      "id": "dim_campaign",
+      "label": "dim_campaign",
+      "name": "活動維度表",
+      "type": "cleaned",
+      "description": "活動 lookup",
+      "fields": ["campaign_code", "campaign_name"]
+    },
+    {
+      "id": "sheet_10_brand",
+      "label": "品牌管理",
+      "name": "品牌管理",
+      "type": "raw",
+      "description": "品牌主檔原始來源",
+      "fields": ["data_id", "brand_code", "brand_name", "brand_description"]
+    },
+    {
+      "id": "sheet_20_channel",
+      "label": "通路管理",
+      "name": "通路管理",
+      "type": "raw",
+      "description": "通路主檔原始來源",
+      "fields": ["data_id", "channel_code", "channel_name"]
+    },
+    {
+      "id": "sheet_30_payment",
+      "label": "金流管理",
+      "name": "金流管理",
+      "type": "raw",
+      "description": "金流主檔原始來源",
+      "fields": ["data_id", "payment_code", "payment_name"]
+    },
+    {
+      "id": "sheet_40_logistics",
+      "label": "物流管理",
+      "name": "物流管理",
+      "type": "raw",
+      "description": "物流主檔原始來源",
+      "fields": ["data_id", "logistics_code", "logistics_name"]
+    },
+    {
+      "id": "sheet_41_zipcode",
+      "label": "郵遞區號",
+      "name": "郵遞區號",
+      "type": "raw",
+      "description": "郵遞區號與縣市區域來源",
+      "fields": ["data_id", "zipcode", "city", "district"]
+    },
+    {
+      "id": "sheet_50_order",
+      "label": "訂單管理",
+      "name": "訂單管理",
+      "type": "raw",
+      "description": "訂單原始主檔與 JSON 擴充欄位來源",
+      "fields": ["data_id", "order_code", "customer_code", "order_amount", "order_amount_with_shipping", "order_date", "status"]
+    },
+    {
+      "id": "sheet_60_customer",
+      "label": "客戶管理",
+      "name": "客戶管理",
+      "type": "raw",
+      "description": "客戶主檔原始來源",
+      "fields": ["data_id", "customer_code", "customer_name", "customer_phone", "customer_email"]
+    },
+    {
+      "id": "sheet_70_product",
+      "label": "商品管理",
+      "name": "商品管理",
+      "type": "raw",
+      "description": "商品主檔與品牌補充來源",
+      "fields": ["data_id", "product_code", "product_name", "brand_code"]
+    },
+    {
+      "id": "sheet_80_campaign",
+      "label": "活動管理",
+      "name": "活動管理",
+      "type": "raw",
+      "description": "活動主檔來源",
+      "fields": ["data_id", "campaign_code", "campaign_name"]
+    },
+    {
+      "id": "sheet_99_order_detail",
+      "label": "訂單明細",
+      "name": "訂單明細",
+      "type": "raw",
+      "description": "訂單明細原始來源與含運/物流細節來源",
+      "fields": ["data_id", "order_code", "product_code", "quantity", "subtotal"]
+    },
+    {
+      "id": "view_order_customer",
+      "label": "view_order_customer",
+      "name": "訂單客戶檢視",
+      "type": "view",
+      "description": "客戶分析的共同底座",
+      "fields": ["order_code", "customer_code", "order_amount", "order_amount_with_shipping", "order_date", "status"]
+    },
+    {
+      "id": "erp_daily_sales",
+      "label": "erp_daily_sales",
+      "name": "ERP日銷售匯總",
+      "type": "view",
+      "description": "ERP 每日銷售彙總",
+      "fields": ["date", "revenue", "revenue_net", "order_count", "brand_code"]
+    },
+    {
+      "id": "mat_ga4_daily_traffic",
+      "label": "mat_ga4_daily_traffic",
+      "name": "GA4每日流量",
+      "type": "ga4",
+      "description": "GA4 流量快取",
+      "fields": ["date", "sessions", "users", "pageviews", "brand"]
+    },
+    {
+      "id": "dim_brand_ga4_mapping",
+      "label": "品牌GA4映射",
+      "name": "品牌GA4映射",
+      "type": "cleaned",
+      "description": "ERP 品牌映射 GA4 dataset",
+      "fields": ["brand_code", "ga4_brand_name"]
+    },
+    {
+      "id": "vw_ls_ga4_traffic_sales_daily",
+      "label": "GA4 x ERP 流量營收",
+      "name": "GA4 x ERP 流量營收",
+      "type": "view",
+      "description": "GA4 數據與 ERP 銷售數據的聯合分析",
+      "fields": ["date", "sessions", "revenue", "roas"]
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "fact_orders", "target": "sheet_60_customer", "key": "customer_code", "description": "訂單對客戶主檔"},
+    {"id": "e2", "source": "fact_orders", "target": "sheet_10_brand", "key": "brand_code", "description": "訂單對品牌主檔"},
+    {"id": "e3", "source": "fact_orders", "target": "sheet_20_channel", "key": "channel_code", "description": "訂單對通路主檔"},
+    {"id": "e4", "source": "fact_orders", "target": "sheet_30_payment", "key": "payment_code", "description": "訂單對金流主檔"},
+    {"id": "e5", "source": "fact_orders", "target": "sheet_40_logistics", "key": "logistics_code", "description": "訂單對物流主檔"},
+    {"id": "e6", "source": "fact_orders", "target": "sheet_80_campaign", "key": "campaign_code", "description": "訂單對活動主檔"},
+    {"id": "e6a", "source": "fact_orders", "target": "dim_customer", "key": "customer_code", "description": "訂單對客戶維度"},
+    {"id": "e6b", "source": "fact_orders", "target": "dim_brand", "key": "brand_code", "description": "訂單對品牌維度"},
+    {"id": "e6c", "source": "fact_orders", "target": "dim_channel", "key": "channel_code", "description": "訂單對通路維度"},
+    {"id": "e6d", "source": "fact_orders", "target": "dim_payment", "key": "payment_code", "description": "訂單對金流維度"},
+    {"id": "e6e", "source": "fact_orders", "target": "dim_logistics", "key": "logistics_code", "description": "訂單對物流維度"},
+    {"id": "e6f", "source": "fact_orders", "target": "dim_campaign", "key": "campaign_code", "description": "訂單對活動維度"},
+    {"id": "e7", "source": "fact_order_details", "target": "sheet_99_order_detail", "key": "ragic_id", "description": "明細對原始訂單明細"},
+    {"id": "e7a", "source": "fact_order_details", "target": "sheet_50_order", "key": "order_code", "description": "明細對原始訂單"},
+    {"id": "e7b", "source": "sheet_99_order_detail", "target": "sheet_50_order", "key": "order_code", "description": "原始明細對原始訂單"},
+    {"id": "e8", "source": "fact_order_details", "target": "sheet_70_product", "key": "product_code", "description": "明細對商品主檔"},
+    {"id": "e9", "source": "fact_order_details", "target": "sheet_20_channel", "key": "channel_code", "description": "明細對通路主檔"},
+    {"id": "e10", "source": "fact_order_details", "target": "sheet_30_payment", "key": "payment_code", "description": "明細對金流主檔"},
+    {"id": "e11", "source": "fact_order_details", "target": "sheet_40_logistics", "key": "logistics_code", "description": "明細對物流主檔"},
+    {"id": "e12", "source": "fact_order_details", "target": "sheet_80_campaign", "key": "channel_campaign_no1", "description": "明細對活動主檔"},
+    {"id": "e13", "source": "view_order_customer", "target": "sheet_50_order", "key": "ragic_id", "description": "檢視對原始訂單"},
+    {"id": "e14", "source": "view_order_customer", "target": "sheet_60_customer", "key": "customer_code", "description": "檢視對客戶主檔"},
+    {"id": "e15", "source": "erp_daily_sales", "target": "fact_orders", "key": "ragic_id", "description": "ERP銷售對訂單"},
+    {"id": "e16", "source": "erp_daily_sales", "target": "sheet_10_brand", "key": "brand_code", "description": "ERP銷售對品牌"},
+    {"id": "e17", "source": "erp_daily_sales", "target": "sheet_20_channel", "key": "channel_code", "description": "ERP銷售對通路"},
+    {"id": "e18", "source": "erp_daily_sales", "target": "sheet_30_payment", "key": "payment_code", "description": "ERP銷售對金流"},
+    {"id": "e19", "source": "vw_ls_ga4_traffic_sales_daily", "target": "mat_ga4_daily_traffic", "key": "date", "description": "GA4-ERP對GA4流量"},
+    {"id": "e20", "source": "vw_ls_ga4_traffic_sales_daily", "target": "erp_daily_sales", "key": "date", "description": "GA4-ERP對ERP銷售"},
+    {"id": "e21", "source": "dim_brand", "target": "sheet_10_brand", "key": "ragic_id", "description": "品牌維度對原始品牌"},
+    {"id": "e22", "source": "dim_channel", "target": "sheet_20_channel", "key": "ragic_id", "description": "通路維度對原始通路"},
+    {"id": "e23", "source": "dim_payment", "target": "sheet_30_payment", "key": "ragic_id", "description": "金流維度對原始金流"},
+    {"id": "e24", "source": "dim_logistics", "target": "sheet_40_logistics", "key": "ragic_id", "description": "物流維度對原始物流"},
+    {"id": "e25", "source": "dim_postal", "target": "sheet_41_zipcode", "key": "ragic_id", "description": "地理維度對郵遞區號"},
+    {"id": "e26", "source": "dim_customer", "target": "sheet_60_customer", "key": "ragic_id", "description": "客戶維度對原始客戶"},
+    {"id": "e27", "source": "dim_product", "target": "sheet_70_product", "key": "ragic_id", "description": "商品維度對原始商品"},
+    {"id": "e28", "source": "dim_campaign", "target": "sheet_80_campaign", "key": "ragic_id", "description": "活動維度對原始活動"}
+  ],
+  "items": [
+    {
+      "id": "star-model",
+      "label": "星狀模型",
+      "category": "view",
+      "summary": "ERP 訂單事實表 (fact_orders, fact_order_details) 圍繞維度表的星狀結構",
+      "focus": ["fact_orders", "fact_order_details", "dim_customer", "dim_brand", "dim_channel", "dim_payment", "dim_logistics", "dim_product", "dim_campaign"]
+    },
+    {
+      "id": "ga4-cross",
+      "label": "GA4 交叉分析",
+      "category": "analysis",
+      "summary": "GA4 數據與 ERP 銷售數據的聯合分析，包含流量營收與投資回報",
+      "focus": ["mat_ga4_daily_traffic", "erp_daily_sales", "vw_ls_ga4_traffic_sales_daily"]
+    },
+    {
+      "id": "etl-pipeline",
+      "label": "ETL 流程",
+      "category": "process",
+      "summary": "Ragic 備份 → 清洗 → 星狀模型轉換",
+      "focus": ["sheet_10_brand", "sheet_20_channel", "sheet_30_payment", "sheet_40_logistics", "sheet_50_order", "sheet_60_customer", "sheet_70_product", "sheet_80_campaign", "sheet_99_order_detail"]
+    },
+    {
+      "id": "brand-analysis",
+      "label": "品牌分析",
+      "category": "analysis",
+      "summary": "品牌維度與訂單事實的關聯分析",
+      "focus": ["sheet_10_brand", "dim_brand", "fact_orders"]
+    },
+    {
+      "id": "channel-analysis",
+      "label": "通路分析",
+      "category": "analysis",
+      "summary": "通路維度與訂單事實的關聯分析",
+      "focus": ["sheet_20_channel", "dim_channel", "fact_orders"]
+    },
+    {
+      "id": "customer-analysis",
+      "label": "客戶分析",
+      "category": "analysis",
+      "summary": "客戶維度與訂單事實的關聯分析",
+      "focus": ["sheet_60_customer", "dim_customer", "fact_orders", "view_order_customer"]
+    },
+    {
+      "id": "product-analysis",
+      "label": "商品分析",
+      "category": "analysis",
+      "summary": "商品維度與訂單明細的關聯分析",
+      "focus": ["sheet_70_product", "dim_product", "fact_order_details"]
+    },
+    {
+      "id": "campaign-analysis",
+      "label": "活動分析",
+      "category": "analysis",
+      "summary": "活動維度與訂單事實的關聯分析",
+      "focus": ["sheet_80_campaign", "dim_campaign", "fact_orders"]
+    }
+  ]
+}

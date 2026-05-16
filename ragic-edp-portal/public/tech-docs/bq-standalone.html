@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BigQuery 資料表關聯圖 - RagicEDP</title>
+    <script src="https://unpkg.com/cytoscape@3.27.2/dist/cytoscape.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d;
+            --text-primary: #e6edf3; --text-secondary: #8b949e;
+            --accent-green: #78d67e; --accent-gold: #d5c94b; --accent-blue: #58a6ff;
+            --border-color: #30363d; --highlight-green: #238636;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: var(--bg-primary); color: var(--text-primary); height: 100vh; overflow: hidden; }
+        .container { display: flex; flex-direction: column; height: 100vh; }
+        header { padding: 16px 20px; background: linear-gradient(135deg, #1a1f29 0%, #0d1117 100%); border-bottom: 1px solid var(--border-color); }
+        header h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        header .desc { font-size: 13px; color: var(--text-secondary); }
+        .tabs { display: flex; gap: 8px; margin-top: 12px; }
+        .tab-btn { padding: 6px 16px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .tab-btn.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+        .main { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 300px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        .search-box { padding: 12px; border-bottom: 1px solid var(--border-color); }
+        .search-box input { width: 100%; padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; font-size: 13px; }
+        .node-filter { padding: 8px 12px; border-bottom: 1px solid var(--border-color); display: flex; flex-wrap: wrap; gap: 6px; }
+        .filter-btn { padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--text-secondary); }
+        .filter-btn.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+        .item-list { flex: 1; overflow-y: auto; padding: 12px; }
+        .item { padding: 10px 14px; margin: 4px 0; background: var(--bg-tertiary); border-radius: 6px; cursor: pointer; font-size: 13px; border-left: 3px solid transparent; }
+        .item:hover, .item.active { background: var(--highlight-green); border-left-color: var(--accent-green); }
+        .graph-container { flex: 1; position: relative; }
+        #cy { width: 100%; height: 100%; }
+        .detail-panel { width: 340px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        .panel-header { padding: 12px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 14px; }
+        .panel-content { flex: 1; padding: 16px; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+        .legend { padding: 10px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border-color); font-size: 12px; display: flex; gap: 16px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-color { width: 16px; height: 16px; border-radius: 3px; }
+        .legend-raw { background: #6e7681; }
+        .legend-cleaned { background: #0969da; }
+        .legend-view { background: #bc8cff; }
+        .legend-ga4 { background: #8957e5; }
+        .field-list { margin-top: 8px; padding-left: 12px; }
+        .field-list li { margin: 2px 0; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>BigQuery 資料表關聯圖</h1>
+            <div class="desc">專案: b25h01-ragic.erp_backup | Ragic Raw Data、清洗後資料、GA4、View 關聯圖</div>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="bq">BQ 總圖</button>
+            </div>
+        </header>
+
+        <div class="main">
+            <div class="sidebar">
+                <div class="search-box"><input type="text" id="search-input" placeholder="搜尋資料表或視圖..."></div>
+                <div class="node-filter" id="node-filter">
+                    <button class="filter-btn active" data-type="all">全部</button>
+                    <button class="filter-btn" data-type="raw">Raw</button>
+                    <button class="filter-btn" data-type="cleaned">Cleaned</button>
+                    <button class="filter-btn" data-type="view">View</button>
+                    <button class="filter-btn" data-type="ga4">GA4</button>
+                </div>
+                <div class="item-list" id="item-list"></div>
+            </div>
+            <div class="graph-container"><div id="cy"></div></div>
+            <div class="detail-panel">
+                <div class="panel-header">詳情</div>
+                <div class="panel-content" id="detail-content">點選左側或圖上節點以查看詳情</div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item"><div class="legend-color legend-raw"></div><span>Raw (原始)</span></div>
+            <div class="legend-item"><div class="legend-color legend-cleaned"></div><span>Cleaned (清洗)</span></div>
+            <div class="legend-item"><div class="legend-color legend-view"></div><span>View (檢視)</span></div>
+            <div class="legend-item"><div class="legend-color legend-ga4"></div><span>GA4</span></div>
+        </div>
+    </div>
+
+    <script>
+    class GraphViewer {
+        constructor() {
+            this.cy = null;
+            this.currentDataset = 'bq';
+            this.graphData = null;
+            this.currentFilter = 'all';
+            this.init();
+        }
+
+        async init() {
+            try {
+                const response = await fetch('bq-schema.json');
+                this.graphData = await response.json();
+            } catch (e) {
+                console.error('載入資料失敗:', e);
+                return;
+            }
+            this.initCytoscape();
+            this.bindTabEvents();
+            this.bindGraphEvents();
+            this.bindEvents();
+        }
+
+        initCytoscape() {
+            if (this.cy) this.cy.destroy();
+            const elements = this.buildElements();
+            this.cy = cytoscape({
+                container: document.getElementById('cy'),
+                elements: elements,
+                style: [
+                    { selector: 'node', style: { 'background-color': '#121720', 'border-color': '#2a3342', 'border-width': 2, 'label': 'data(label)', 'color': '#eef3ef', 'font-size': 11, 'text-wrap': 'wrap', 'text-max-width': 100, 'width': 80, 'height': 40, 'padding': '8px' }},
+                    { selector: 'node.raw', style: { 'background-color': '#6e7681' }},
+                    { selector: 'node.cleaned', style: { 'background-color': '#0969da' }},
+                    { selector: 'node.ga4', style: { 'background-color': '#8957e5' }},
+                    { selector: 'node.view', style: { 'background-color': '#bc8cff' }},
+                    { selector: '.highlight', style: { 'opacity': 1, 'border-color': '#78d67e', 'border-width': 3 }},
+                    { selector: 'edge', style: { 'line-color': '#2a3342', 'target-arrow-color': '#2a3342', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'width': 2 }},
+                    { selector: '.selected-edge', style: { 'line-color': '#d5c94b', 'width': 3 }}
+                ],
+                layout: { name: 'cose', animate: false }
+            });
+            setTimeout(() => this.resetView(), 100);
+            this.renderItemList();
+        }
+
+        buildElements() {
+            if (this.currentDataset === 'bq') {
+                return [
+                    ...this.graphData.nodes.map(n => ({ data: n, classes: n.type })),
+                    ...this.graphData.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target }, classes: e.type }))
+                ];
+            }
+            return [];
+        }
+
+        bindTabEvents() {
+            const self = this;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tab = this.dataset.tab;
+                    if (tab !== self.currentDataset) {
+                        self.currentDataset = tab;
+                        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        self.initCytoscape();
+                    }
+                });
+            });
+        }
+
+        bindGraphEvents() {
+            const self = this;
+            this.cy.on('tap', 'node', function(evt) {
+                const node = evt.target;
+                const nodeData = node.data();
+                self.showNodeDetail(nodeData);
+                self.focusNodes([nodeData.id]);
+            });
+            this.cy.on('tap', 'edge', function(evt) {
+                const edge = evt.target;
+                self.highlightEdge(edge);
+                const edgeData = edge.data();
+                self.showEdgeDetail(edgeData);
+            });
+            this.cy.on('tap', function(evt) { if (evt.target === self.cy) self.resetView(); });
+        }
+
+        bindEvents() {
+            const self = this;
+
+            // 節點類型過濾
+            document.getElementById('node-filter').addEventListener('click', function(e) {
+                if (e.target.classList.contains('filter-btn')) {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    self.currentFilter = e.target.dataset.type;
+                    self.applyNodeFilter();
+                }
+            });
+
+            document.getElementById('item-list').addEventListener('click', function(e) {
+                const itemEl = e.target.closest('.item');
+                if (itemEl) {
+                    document.querySelectorAll('.item').forEach(el => el.classList.remove('active'));
+                    itemEl.classList.add('active');
+                    if (self.currentDataset === 'bq') {
+                        const itemId = itemEl.dataset.id;
+                        const item = self.graphData.items?.find(i => i.id === itemId);
+                        if (item) self.focusItem(item);
+                    }
+                }
+            });
+            document.getElementById('search-input').addEventListener('input', function() {
+                self.searchNodes(this.value);
+            });
+        }
+
+        applyNodeFilter() {
+            if (this.currentFilter === 'all') {
+                this.cy.elements().removeClass('dim');
+            } else {
+                this.cy.elements().addClass('dim');
+                this.cy.nodes(`[type = "${this.currentFilter}"]`).removeClass('dim');
+                this.cy.edges().forEach(edge => {
+                    const source = edge.source();
+                    const target = edge.target();
+                    if (source.classList.includes(this.currentFilter) || target.classList.includes(this.currentFilter)) {
+                        edge.removeClass('dim');
+                    }
+                });
+            }
+        }
+
+        focusNodes(nodeIds) {
+            this.cy.elements().removeClass('highlight related dim selected-edge');
+            const self = this;
+            nodeIds.forEach(id => {
+                const node = self.cy.$id(id);
+                if (node.nonempty()) {
+                    node.addClass('highlight');
+                    node.connectedEdges().addClass('selected-edge');
+                    node.neighborhood().nodes().addClass('related');
+                }
+            });
+        }
+
+        searchNodes(query) {
+            if (!query) { this.cy.elements().removeClass('dim'); return; }
+            const matched = this.cy.nodes().filter(n => n.data('label').toLowerCase().includes(query.toLowerCase()));
+            this.cy.elements().addClass('dim');
+            matched.removeClass('dim');
+            matched.connectedEdges().removeClass('dim');
+        }
+
+        showNodeDetail(node) {
+            const nameDisplay = node.name && node.name !== node.label
+                ? `<p><strong>中文名稱:</strong> ${node.name}</p>`
+                : '';
+            const typeLabel = node.type === 'raw' ? 'Raw (原始)' : node.type === 'cleaned' ? 'Cleaned (清洗後資料)' : node.type === 'view' ? 'View (檢視)' : node.type === 'ga4' ? 'GA4' : node.type;
+            const description = node.description ? `<p><strong>說明:</strong> ${node.description}</p>` : '';
+            const fieldsHtml = node.fields && node.fields.length > 0
+                ? `<p><strong>欄位 (${node.fields.length}):</strong></p><ul class="field-list">${node.fields.map(f => `<li>${f}</li>`).join('')}</ul>`
+                : '';
+
+            document.getElementById('detail-content').innerHTML = `
+                <p><strong>${node.label}</strong></p>
+                ${nameDisplay}
+                <p><strong>類型:</strong> ${typeLabel}</p>
+                ${description}
+                ${fieldsHtml}
+            `;
+        }
+
+        highlightEdge(edge) {
+            this.cy.elements().removeClass('highlight related dim selected-edge');
+            edge.addClass('highlight');
+        }
+
+        showEdgeDetail(edge) {
+            const edgeInfo = this.graphData.edges?.find(e => e.id === edge.id);
+            const description = edgeInfo?.description || '';
+            document.getElementById('detail-content').innerHTML = `
+                <p><strong>關聯鍵</strong></p>
+                <p>從: ${edge.source} → 到: ${edge.target}</p>
+                <p>鍵值: ${edge.key}</p>
+                ${description ? `<p><strong>說明:</strong> ${description}</p>` : ''}
+            `;
+        }
+
+        showItemDetail(item) {
+            document.getElementById('detail-content').innerHTML = `<p><strong>${item.label}</strong></p><p>${item.summary || ''}</p>`;
+        }
+
+        resetView() {
+            if (!this.cy || this.cy.elements().length === 0) return;
+            this.cy.elements().removeClass('highlight related dim selected-edge');
+            const fitOpts = { padding: 40 };
+            this.cy.fit(fitOpts);
+            document.getElementById('detail-content').innerHTML = '點選左側或圖上節點以查看詳情';
+            document.querySelectorAll('.item').forEach(el => el.classList.remove('active'));
+        }
+
+        renderItemList() {
+            const listEl = document.getElementById('item-list');
+            if (this.currentDataset === 'bq') {
+                listEl.innerHTML = this.graphData.items?.map(i =>
+                    `<div class="item" data-id="${i.id}"><strong>${i.label}</strong><br><span style="color:var(--text-secondary);font-size:11px;">${i.summary || ''}</span></div>`
+                ).join('') || '';
+            }
+        }
+
+        focusItem(item) {
+            this.resetView();
+            const self = this;
+            item.focus?.forEach(nodeId => {
+                const node = self.cy.$id(nodeId);
+                if (node.nonempty()) {
+                    node.addClass('highlight');
+                    node.connectedEdges().addClass('selected-edge');
+                }
+            });
+            this.showItemDetail({ label: item.label, summary: item.summary });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => new GraphViewer());
+    </script>
+</body>
+</html>
